@@ -1,0 +1,212 @@
+---
+title: "Trimet Analysis"
+author: "Justus E."
+date: "`r Sys.Date()`"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(lubridate)
+library(ggplot2)
+library(gridExtra)
+library(forcats)
+library(stringr)
+library(tm)
+library(SnowballC)
+library(RColorBrewer)
+library(readxl)
+```
+
+# EDA
+
+```{r}
+df <- read_excel("C:/Users/justu/OneDrive/Documents/Data_science/Classes/Capstone/trimet_complete.xlsx")
+summary(df)
+
+```
+
+```{r}
+# Load the lubridate package
+library(lubridate)
+
+# Convert the incident_date to a date-time object and extract the year
+df$year <- year(as.POSIXct(df$incident_date, format="%Y-%m-%d %H:%M:%S"))
+
+# Now calculate counts and average for each year
+df_year_counts <- df %>%
+  count(year) %>%
+  mutate(avg = mean(n),
+         color = ifelse(n > avg, "Above Average", "Below Average"))
+
+# Convert the incident_date to a date-time object and extract the month
+df$month <- month(as.POSIXct(df$incident_date, format="%Y-%m-%d %H:%M:%S"), label=TRUE)
+
+# Now calculate counts and average for each month
+df_month_counts <- df %>%
+  count(month) %>%
+  mutate(avg = mean(n),
+         color = ifelse(n > avg, "Above Average", "Below Average"))
+# Convert the incident_date to a date-time object and extract the day
+df$day <- day(as.POSIXct(df$incident_date, format="%Y-%m-%d %H:%M:%S"))
+
+# Now calculate counts and average for each day
+df_day_counts <- df %>%
+  count(day) %>%
+  mutate(avg = mean(n),
+         color = ifelse(n > avg, "Above Average", "Below Average"))
+
+# Convert the incident_date to a date-time object and extract the hour
+df$hour <- hour(as.POSIXct(df$incident_date, format="%Y-%m-%d %H:%M:%S"))
+
+# Now calculate counts and average for each hour
+df_hour_counts <- df %>%
+  count(hour) %>%
+  mutate(avg = mean(n),
+         color = ifelse(n > avg, "Above Average", "Below Average"))
+
+
+```
+
+# Yearly Counts
+
+```{r}
+
+# Plot yearly counts
+ggplot(df_year_counts, aes(x = year, y = n, fill = color)) + 
+  geom_bar(stat = "identity", show.legend = FALSE) +
+  geom_hline(aes(yintercept = avg), linetype = "dashed", color = "black") +
+  scale_fill_manual(values = c("Above Average" = "#FF7F7F", "Below Average" = "#7F7FFF")) +
+  theme_minimal() +
+  labs(x = "Year", y = "Count", fill = "")
+```
+
+The incidents are increasing annually so it is important to get a handle on this. Especially considering 2022 had tremendously more results than 2021. A better plot for this would be using a timeseries plot. Would be interesting to 
+
+# Monthly Counts
+
+```{r}
+# Calculate counts and average
+df_month_counts <- df %>%
+  count(month) %>%
+  mutate(avg = mean(n),
+         color = ifelse(n > avg, "Above Average", "Below Average"))
+
+ggplot(df_month_counts, aes(x = month, y = n, fill = color)) + 
+  geom_bar(stat = "identity", show.legend = FALSE) +
+  geom_hline(aes(yintercept = avg), linetype = "dashed", color = "black") +
+  scale_fill_manual(values = c("Above Average" = "#FF7F7F", "Below Average" = "#7F7FFF")) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5)) +
+  labs(y = "Count", fill = "")
+
+```
+
+We should focus on the months Dec - May as those have the most incidents and are above the average. It would be valuable to understand what could be causing the increase in these specific months as well.
+
+
+
+# Daily Counts
+
+```{r}
+# Calculate counts and average for each day
+df_day_counts <- df %>%
+  count(day) %>%
+  mutate(avg = mean(n),
+         color = ifelse(n > avg, "Above Average", "Below Average"))
+
+# daily counts
+ggplot(df_day_counts, aes(x = day, y = n, fill = color)) + 
+  geom_bar(stat = "identity", show.legend = FALSE) +
+  geom_hline(aes(yintercept = avg), linetype = "dashed", color = "black") +
+  scale_fill_manual(values = c("Above Average" = "#FF7F7F", "Below Average" = "#7F7FFF")) +
+  theme_minimal() +
+  labs(x = "Day of Month", y = "Count", fill = "")
+
+
+```
+
+Days are a little sporatic but it looks like earlier in the month and later in the months there are more incidents, first and last week of the month specifically.
+
+# Hourly Incidents
+
+```{r}
+#Hourly incidents
+library(lubridate)
+
+# Create a new hour field
+df$hour <- hour(df$incident_date)
+
+# Calculate counts and average for each hour
+df_hour_counts <- df %>%
+  count(hour) %>%
+  mutate(avg = mean(n),
+         color = ifelse(n > avg, "Above Average", "Below Average"))
+
+# Plot hourly counts
+ggplot(df_hour_counts, aes(x = hour, y = n, fill = color)) + 
+  geom_bar(stat = "identity", show.legend = FALSE) +
+  geom_hline(aes(yintercept = avg), linetype = "dashed", color = "black") +
+  scale_fill_manual(values = c("Above Average" = "#FF7F7F", "Below Average" = "#7F7FFF")) +
+  theme_minimal() +
+  labs(x = "Hour of the Day", y = "Count", fill = "")
+
+
+```
+
+Clearly it shows that many incidents occur at hour 6-12 and 3-12a. Makes sense as most people are commuting or using the transportation services in the morning before work/school and after work/school.
+
+
+```{r}
+#Parsing text to extract common themes amoungst reported incidents
+comments_corpus <- Corpus(VectorSource(df$comments))
+
+comments_corpus <- tm_map(comments_corpus, content_transformer(tolower))
+comments_corpus <- tm_map(comments_corpus, removePunctuation)
+comments_corpus <- tm_map(comments_corpus, removeNumbers)
+comments_corpus <- tm_map(comments_corpus, removeWords, stopwords("english"))
+comments_corpus <- tm_map(comments_corpus, stemDocument)
+
+```
+
+```{r}
+library(tidytext)
+# Converting the text to lower case
+df$comments <- tolower(df$comments)
+
+# Removing punctuation, numbers, stop words and white spaces
+df$comments <- removePunctuation(df$comments)
+df$comments <- removeNumbers(df$comments)
+df$comments <- removeWords(df$comments, stopwords("english"))
+df$comments <- stripWhitespace(df$comments)
+
+# Tokenizing the words
+df_tokens <- df %>%
+  unnest_tokens(word, comments)
+
+# Counting the frequency of each word
+df_word_counts <- df_tokens %>%
+  count(word, sort = TRUE)
+
+# Filtering out words with less than 3 characters
+df_word_counts <- df_word_counts[nchar(df_word_counts$word) > 2, ]
+
+# Displaying the top 10 words
+top_10_words <- df_word_counts %>%
+  top_n(10) %>%
+  mutate(word = reorder(word, n))
+
+ggplot(top_10_words) +
+  geom_col(aes(x = word, y = n, fill = n)) +
+  labs(x = "Term", y = "Frequency", title = "Top 10 Terms in Comments") +
+  coord_flip()
+```
+
+Incidents occur mostly on the train it appears, however we should look at the next most common phrases or nouns/adjectives to get a better understanding.
+
