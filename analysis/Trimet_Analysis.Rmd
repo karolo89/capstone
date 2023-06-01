@@ -27,7 +27,7 @@ library(readxl)
 # EDA
 
 ```{r}
-df <- read_excel("C:/Users/justu/OneDrive/Documents/Data_science/Classes/Capstone/trimet_complete.xlsx")
+df <- read_csv('https://raw.githubusercontent.com/karolo89/capstone/main/data/trimet_security_2019_2023.csv')
 summary(df)
 
 ```
