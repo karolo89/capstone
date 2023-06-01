@@ -1,0 +1,74 @@
+---
+title: 'Enhancing Public Transit Safety and Reliability: Analyzing TriMet''s Security
+  Data in Multnomah, Clackamas, and Washington Counties'
+author: Karol Orozco, Corey Cassell, Justus Eaglesmith, Charles Hanks, & CorDarryl
+  Hall
+date: "May 30, 2023"
+output:
+  html_document:
+    df_print: paged
+header-includes: "\\usepackage{titling}\n\\pretitle{\\begin{center}\n\\includegraphics[width=1in,height=1in]{wu
+  - logo.png}\\LARGE\\\\}\n\\posttitle{\\end{center}}\n"
+footer-includes: "-| \\usepackage{titling} \\pretitle{\\begin{center} \\includegraphics[width=1in,height=1in]{tmet.jpg}\\LARGE\\\\}
+  \\posttitle{\\end{center}}"
+---
+
+***
+
+## ABSTRACT 
+
+This study addresses unpleasant and unsafe conditions experienced by passengers and operators of public transit in Multnomah, Clackamas, and Washington counties. There were 54% more security incidents in 2022 compared to 2019. By analyzing TriMet's security data, we aim to identify the key factors contributing to these incidents, such as neighborhood, time of day, and route. The ultimate goal is to provide actionable recommendations to TriMet to enhance public transit safety and reliability for all stakeholders. TriMet, the Tri-County Metropolitan Transportation District of Oregon, is a significant public agency responsible for operating mass transit in the Portland metropolitan area. The analysis will examine TriMet's security data to identify patterns and correlations between incidents and specific factors. Based on these findings, we will propose practical strategies to improve safety and reliability, benefiting passengers and operators. This research has the potential to contribute to the broader transportation industry by offering data-driven insights into how public transit systems can address safety concerns effectively. 
+
+## CONTEXT
+
+*What is the problem?:* 
+
+The problem at hand is the imperative to enhance safety and security in TriMet's public transit system. Recent high-profile crimes have caused alarm among state leaders and riders, highlighting the pressing need for improved security measures. The prevalence of unpleasant and unsafe conditions experienced by passengers and operators is detrimental to their overall transit experience and can discourage ridership. Addressing this problem is not only about the continuity of the agency and preventing crime but also about fostering an environment where passengers can feel at ease and confident while utilizing public transportation.
+
+*Why is it important to solve?:* 
+
+This is a critical problem to solve for several reasons. The first reason is Passenger Safety - Ensuring the safety of passengers is of the utmost importance for any public transit system. By identifying and addressing the key factors contributing to these unfavorable conditions, TriMet can take proactive measures to enhance passenger safety and reduce the risk of incidents that will, in turn, provide a more secure and reliable transit experience. Another critical reason is Public Confidence - Addressing safety concerns and improving overall safety in public transit can increase public confidence in the system. When passengers feel safe and secure, they are more likely to use public transit, increasing ridership and reducing reliance on private vehicles. A safe and welcoming public transit system is critical for repairing Portland's reputation as a global destination for tourism, recreation, and business opportunities. Our final reason is Operational Efficiency - Analyzing the key factors contributing to incidents can help TriMet optimize its operations. By understanding when and where incidents are more likely to occur, they can allocate resources more effectively, implement targeted security measures, and optimize service routes and schedules. Solving this problem is vital as it contributes to the well-being of the general public who uses the public transit system and improves the overall efficiency of TriMet's operations, leading to a safer and more reliable public transit system.
+
+
+## PROPOSAL
+
+*Questions we hope to answer:* 
+
+- Where do riders experience the most problems? What factors are contributing to this situation?
+- Has the increase in customer safety supervisors and safety response team members decreased security incidents since the beginning of 2023?
+- What are the ways that TriMet enforces security / protects riders and employees?
+- Among the incidents that occur at night, is the security officer's presence sufficient? Is closing certain areas to the public during non-operational hours an option?
+- An investigation of Safety and public transit will involve research into this city's housing and mental health crises. What agencies are gathering data on the rise of unhoused people? Is there a correlation with a rise in security issues in mass transit?
+
+
+*How we plan to answer:*
+
+Our initial plan consists of gathering existing data on safety incidents, security measures, and rider surveys from TriMet as well as other validated data sources. Gathering this data allows us to analyze reported security incidents and complaints related to rider safety and experiences. Conducting surveys and interviews allows us to meet with TriMet officials to understand the measures currently in place for enforcing security and protecting riders and employees. Post analyzing data and evaluating security measures in place; we plan to analyze Post Pandemic Adaptation given that there are likely outliers given the economy. Additionally, we plan to explore external factors (housing and mental health) that affect public transit and identify correlations. 
+
+*What we hope to find:* 
+
+Our analysis aims to find efficient data on rider satisfaction, allowing us to assess how individuals perceive their overall safety and experience while using TriMet. This data will provide valuable insights into whether people feel unsafe or discouraged when utilizing public transit, as well as the percentage of riders who share these sentiments. Furthermore, we will examine TriMet's current security and protection measures to evaluate their effectiveness in preventing crimes. Additionally, we will explore the correlation between security issues on mass transit and the city's housing/mental health crises. This investigation entails gathering data from relevant agencies to assess whether a relationship exists between these factors and if one contributes to the increase in security issues on public transit. Through the gathering and analysis of this information, we can obtain a comprehensive understanding of the safety and security concerns associated with TriMet, evaluate the effectiveness of current measures, and identify potential areas for improvement.
+
+
+## CONCLUSION 
+
+*Summarize Problem & Solution:* 
+
+**Problem:**
+Passengers and operators of public transit in Multnomah, Clackamas, and Washington counties experience unpleasant and unsafe conditions. TriMet’s security data needs to be analyzed to identify the key factors contributing to these incidents.The goal is to provide actionable recommendations to TriMet to enhance public transit safety and reliability for all stakeholders.
+
+**Solution:**
+To address the problem, our approach involves gathering comprehensive data on safety incidents, security measures, and rider surveys from TriMet and other validated sources. This data will be analyzed to identify key factors contributing to unpleasant and unsafe conditions, including location, time of day, routes, and other variables. Rider satisfaction will be assessed through survey analysis to determine the percentage of passengers feeling unsafe or discouraged. The effectiveness of current security measures, such as surveillance systems, police presence, and lighting, will be evaluated. The analysis will also consider post-pandemic adaptation and housing and mental health crisis correlations. Based on these findings, actionable recommendations will be proposed to TriMet, aiming to improve public transit safety, increase public confidence, optimize operations, and create sustainable urban environments.
+
+*How can the solution be important beyond the specific context, can it be generalized?*
+
+The proposed solution of analyzing TriMet’s data to enhance public transit safety and reliability can be generalized beyond the specific context. By adopting a data-driven approach, evaluating security measures, assessing rider satisfaction, and providing recommendations, this solution can be applied to other public transit systems worldwide. The universal concerns of public transit safety, sustainable transportation, and the correlation between security issues and social factors make this approach relevant and valuable in diverse urban environments. Implementing similar strategies can improve safety measures, enhance the passenger experience, and contribute to developing efficient and sustainable public transit systems globally.
+
+*Discuss limitations and potential future directions to take the project.* 
+
+**Limitations:**
+Our project faces data availability and quality limitations, as it relies on accurate and comprehensive data from TriMet and other sources. Incomplete or unreliable data could hinder the accuracy of the analysis and recommendations. Additionally, external factors beyond TriMet%E2%80%99s control, such as societal changes or economic fluctuations, may impact the effectiveness of implemented measures. Resource constraints, such as limited time, budget, or expertise, could also affect the project%E2%80%99s scope and depth.
+
+**Potential Future Directions:**
+To overcome these limitations, we thought about including long-term monitoring to track trends and assess the effectiveness of interventions. Collaborative partnerships with academic institutions and research organizations can facilitate knowledge exchange and improve the analysis. Exploring technological advancements like advanced surveillance systems or predictive analytics can enhance security measures. Engaging stakeholders, evaluating implemented measures, and integrating emerging trends such as shared mobility services can ensure continuous improvement and adaptability to evolving challenges in public transit safety and reliability. Considering these directions, our project can overcome limitations and remain effective and relevant in addressing safety concerns.
+
