@@ -210,3 +210,104 @@ ggplot(top_10_words) +
 
 Incidents occur mostly on the train it appears, however we should look at the next most common phrases or nouns/adjectives to get a better understanding.
 
+
+## Analyzing Security Incidents at Night 
+
+We will treat nighttime as the time between sunset and sunrise.
+
+### Questions: 
+
+* What type of security incidents occurs most frequently as night? 
+
+Adding seasonality category (night begins at different times according to season)
+
+Winter : December - February 
+Spring : April - June 
+Summer : July - August 
+Fall : September - November 
+
+```{r}
+df = df %>% mutate(season = factor(case_when(
+                          month %in% c('Dec','Jan','Feb') ~ 'Winter', 
+                          month %in% c('Mar','Apr', 'May') ~ 'Spring', 
+                          month %in% c('Jun', 'Jul', 'Aug') ~ 'Summer', 
+                          month %in% c('Sep', 'Oct','Nov') ~ 'Fall')),
+              night_time = factor(ifelse(hour >= 20 | hour <= 4, 1, 0)))
+#ballpark nighttime as between the hours of 20:00 and 05:00 
+
+df %>% group_by(night_time, season) %>% count()  %>% 
+            ggplot(aes(x = season, y = n, fill = night_time)) + geom_col() + facet_grid(~ night_time) + 
+            scale_discrete_manual(aesthetics = c("fill"), values = c("#FF7F7F", "#7F7FFF"))
+ 
+```
+We see a decrease in night time incidents during summer time. perhaps this suggests that more incidents occur when more people are using TriMet services due to weather. For example, people seeking shelter in max trains due to cold and wet conditions. 
+
+
+What are the types of that occur most at `night_time`?
+```{r}
+df %>% group_by(night_time) %>% 
+  
+unique(df$type_desc)
+```
+
+What is spread of night incidents in one year?
+```{r}
+ggplot(df %>% filter(night_time == 1) %>% 
+  count(month) %>%
+  mutate(avg = mean(n),
+         color = ifelse(n > avg, "Above Average", "Below Average")), aes(x = month, y = n, fill = color)) + 
+        geom_bar(stat = "identity", show.legend = FALSE) +
+        geom_hline(aes(yintercept = avg), linetype = "dashed", color = "black") +
+        scale_fill_manual(values = c("Above Average" = "#FF7F7F", "Below Average" = "#7F7FFF")) +
+        theme_minimal() +
+        theme(axis.text.x = element_text(angle = 90, vjust = 0.5)) +
+        labs(y = "Count", fill = "") 
+```
+In summer and fall we see a decrease in incidents at night. 
+
+```{r}
+df %>% group_by(year, night_time) %>% count() %>% ggplot(aes(x = year, y = n, fill = night_time)) + geom_col() 
+```
+
+The number of incidents at night is proportional to total number of incidents per year. 
+
+Where are the most incidents occuring at night? 
+
+```{r}
+df %>% filter(night_time == 1) %>%  
+  group_by(location, type_desc ) %>% 
+    count() %>% 
+      arrange(desc(n))
+
+```
+Elmonica is where the MAX trains are stored and serviced - most trains in the morning start here. It would make sense that security personnel are reporting from here. 
+Gateway is a hot spot for all types of activity. 
+Cleveland avenue is in NE Portland, it is worth investigating what lines run on this street. Cleveland is mentioned as a place where 'sleepers' are found. 
+
+
+In 2023, have we seen a decrease in incidents (or rather, an increase in reports) at night given the increased presence of security personnel starting in March 2023? 
+
+```{r}
+df = df %>% mutate(y_m_d = date(df$incident_date)) # adding date only column 
+
+df %>% filter(year == 2023) %>% group_by(y_m_d, night_time) %>% count() %>%  ggplot(aes(x = y_m_d, y = n, fill = night_time))  + geom_point() + 
+  geom_smooth(method = 'lm', se = FALSE) + 
+  facet_grid(~night_time)
+
+
+```
+
+What if we compare the same time interval, one year ago? 
+```{r}
+df %>% filter(year %in% c(2022,2023))%>%
+  filter((y_m_d >= "2022-01-01" & y_m_d <= "2022-05-16") | y_m_d >= "2023-01-01")%>% 
+  group_by(y_m_d,year, night_time) %>% count() %>%  ggplot(aes(x = y_m_d, y = n, color = night_time))  + geom_point() + 
+  geom_smooth(method = 'lm', se = FALSE, color = "black") + 
+  facet_grid(night_time~year) + 
+  theme_minimal()
+
+```
+Nighttime incidents were trending uppward in Jan - May 2022, and now they are trending downward Jan - May 2023. 
+
+
+
