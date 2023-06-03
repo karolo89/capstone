@@ -27,8 +27,9 @@ library(readxl)
 # EDA
 
 ```{r}
-df <- read_csv('https://raw.githubusercontent.com/karolo89/capstone/main/data/trimet_security_2019_2023.csv')
+df <- read_csv('https://raw.githubusercontent.com/karolo89/capstone/main/data/trimet_complete.csv')
 summary(df)
+
 
 ```
 
@@ -37,7 +38,7 @@ summary(df)
 library(lubridate)
 
 # Convert the incident_date to a date-time object and extract the year
-df$year <- year(as.POSIXct(df$incident_date, format="%Y-%m-%d %H:%M:%S"))
+df$year <- year(as.POSIXct(df$incident_date, format="%m/%d/%Y %H:%M"))
 
 # Now calculate counts and average for each year
 df_year_counts <- df %>%
@@ -46,7 +47,7 @@ df_year_counts <- df %>%
          color = ifelse(n > avg, "Above Average", "Below Average"))
 
 # Convert the incident_date to a date-time object and extract the month
-df$month <- month(as.POSIXct(df$incident_date, format="%Y-%m-%d %H:%M:%S"), label=TRUE)
+df$month <- month(as.POSIXct(df$incident_date, format="%m/%d/%Y %H:%M"), label=TRUE)
 
 # Now calculate counts and average for each month
 df_month_counts <- df %>%
@@ -54,7 +55,7 @@ df_month_counts <- df %>%
   mutate(avg = mean(n),
          color = ifelse(n > avg, "Above Average", "Below Average"))
 # Convert the incident_date to a date-time object and extract the day
-df$day <- day(as.POSIXct(df$incident_date, format="%Y-%m-%d %H:%M:%S"))
+df$day <- day(as.POSIXct(df$incident_date, format="%m/%d/%Y %H:%M"))
 
 # Now calculate counts and average for each day
 df_day_counts <- df %>%
@@ -63,7 +64,7 @@ df_day_counts <- df %>%
          color = ifelse(n > avg, "Above Average", "Below Average"))
 
 # Convert the incident_date to a date-time object and extract the hour
-df$hour <- hour(as.POSIXct(df$incident_date, format="%Y-%m-%d %H:%M:%S"))
+df$hour <- hour(as.POSIXct(df$incident_date, format="%m/%d/%Y %H:%M"))
 
 # Now calculate counts and average for each hour
 df_hour_counts <- df %>%
@@ -141,7 +142,7 @@ Days are a little sporatic but it looks like earlier in the month and later in t
 library(lubridate)
 
 # Create a new hour field
-df$hour <- hour(df$incident_date)
+df$hour <- hour(as.POSIXct(df$incident_date, format="%m/%d/%Y %H:%M"))
 
 # Calculate counts and average for each hour
 df_hour_counts <- df %>%
@@ -243,13 +244,6 @@ df %>% group_by(night_time, season) %>% count()  %>%
 We see a decrease in night time incidents during summer time. perhaps this suggests that more incidents occur when more people are using TriMet services due to weather. For example, people seeking shelter in max trains due to cold and wet conditions. 
 
 
-What are the types of that occur most at `night_time`?
-```{r}
-df %>% group_by(night_time) %>% 
-  
-unique(df$type_desc)
-```
-
 What is spread of night incidents in one year?
 ```{r}
 ggplot(df %>% filter(night_time == 1) %>% 
@@ -288,7 +282,7 @@ Cleveland avenue is in NE Portland, it is worth investigating what lines run on 
 In 2023, have we seen a decrease in incidents (or rather, an increase in reports) at night given the increased presence of security personnel starting in March 2023? 
 
 ```{r}
-df = df %>% mutate(y_m_d = date(df$incident_date)) # adding date only column 
+df = df %>% mutate(y_m_d = date(as.POSIXct(incident_date, format="%m/%d/%Y %H:%M"))) # adding date only column 
 
 df %>% filter(year == 2023) %>% group_by(y_m_d, night_time) %>% count() %>%  ggplot(aes(x = y_m_d, y = n, fill = night_time))  + geom_point() + 
   geom_smooth(method = 'lm', se = FALSE) + 
