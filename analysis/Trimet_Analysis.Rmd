@@ -75,6 +75,8 @@ df_hour_counts <- df %>%
 
 ```
 
+
+
 # Yearly Counts
 
 ```{r}
@@ -241,7 +243,6 @@ df %>% group_by(subtype_desc) %>% count()
 14591/nrow(df)
 
 ```
-
 Winter : December - February 
 Spring : April - June 
 Summer : July - August 
@@ -327,5 +328,68 @@ df %>% filter(year %in% c(2022,2023))%>%
 Nighttime incidents were trending upward in Jan - May 2022, and now they are trending downward Jan - May 2023. 
 
 
+# PPB Crime Data: 
+
+How does trimet's security incident increase in 2022 compare with PPB crime data ? We want to rule out the reason for this increase in 2022 as just an increase in reporting / security personel. 
+
+```{r}
+c_17_23 = read_csv('https://raw.githubusercontent.com/karolo89/capstone/main/data/ppb_2017_2023.csv')
+```
+
+```{r}
+#formatting date and time columns 
+c_17_23 = c_17_23 %>% mutate(OccurDate = as.POSIXct(OccurDate, format = "%m/%d/%Y"), 
+                             ReportDate = as.POSIXct(ReportDate, format = "%m/%d/%Y"),
+                             OccurTime = hms::as.hms(as.POSIXct(OccurTime, format = "%H%M"))) %>% relocate(OccurDate, OccurTime, ReportDate)
+
+#coercing char cols into factors 
+cols2factor = c("CrimeAgainst", "Neighborhood", "OffenseCategory", "OffenseType")
+c_17_23[cols2factor] = lapply(c_17_23[cols2factor], factor)
+
+#parsing year, month, hour 
+c_17_23 = c_17_23 %>% mutate(year = factor(year(OccurDate)), 
+                             month = factor(month(OccurDate)), 
+                             hour = hour(OccurTime))
+
+```
+
+Counting events by year, month, hour
+```{r}
+#did 2023 also have a signifcant increase in incidents report to PPB? 
+c_17_23 %>% 
+  filter(OccurDate >= "2017-01-01" & OccurDate < "2023-01-01") %>%
+      group_by(year) %>% 
+        count() %>% 
+           mutate(is_2022 = year == 2022) %>% 
+            ggplot(aes(x = year, y = n)) + geom_col(aes(fill = is_2022)) + geom_hline(aes(yintercept = mean(n)), linetype = "dashed", color = "black") + labs(title = "Number of incidents report to PPB per year")
+
+#do we see the same trend where more incidents occur Dec - May? 
+c_17_23 %>% 
+  filter(OccurDate >= "2017-01-01" & OccurDate < "2023-01-01") %>% 
+    group_by(month) %>% 
+      count() %>% ggplot(aes(x = month, y = n)) + geom_col() 
+
+# nope 
+
+# at what hour do the most incidents occur? 
+c_17_23 %>% 
+  filter(OccurDate >= "2017-01-01" & OccurDate < "2023-01-01") %>% 
+    group_by(hour) %>% 
+      count() %>% 
+        mutate(is_midnight = hour == 0) %>% ggplot(aes(x = hour, y = n)) + geom_col(aes(fill = is_midnight)) 
 
 
+  
+```
+
+What were the most common type of incidents in 2022 vs 2021  ?
+
+```{r}
+c_17_23 %>% filter(year %in% c(2020:2022)) %>%
+  group_by(OffenseType, year) %>% count() %>% 
+  filter( n > 100) %>% 
+    ggplot(aes(x = fct_reorder(OffenseType,n), y = n)) + geom_col() + coord_flip() + labs(title = "Most Common type of crimes in 2022") + facet_grid(~year)
+
+#huge increase in vehicle theft and vandalism 
+
+```
