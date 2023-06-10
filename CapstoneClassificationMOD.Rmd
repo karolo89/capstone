@@ -1,30 +1,368 @@
 ---
-title: "CapstoneClassificationMOD"
+title: "ClassifyOther"
 author: "Corey"
-date: "2023-06-10"
+date: "2023-05-30"
 output: html_document
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(tidytext)
+library(caret)
+library(fastDummies)
+library(randomForest)
+library(dplyr)
+library(text)
+library(tidymodels)
+library(NeuralNetTools)
+
+#neural net set up
+library(reticulate)
+#virtualenv_create("r-reticulate", python = "C:\\Users\\corey\\AppData\\Local\\Programs\\Python\\Python311\\")
+library(tensorflow)
+#install_tensorflow(version = "2.12")
+library(keras)
+#install_keras(envname = "r-reticulate")
+#library(tensorflow)
+#tf$constant("Hello Tensorflow!")
+
+
+```
+### Now with some data for capstone!
+```{r}
+#types of incidents by overall volume
+#are some incidents more common in certain locations?
+ds <- read_csv("C:\\Users\\corey\\OneDrive\\Desktop\\01_Willamette U\\Semester 1\\Capstone\\trimet_complete.csv")
+ds %>% 
+  select(subtype_desc) %>% 
+  group_by(subtype_desc) %>% 
+  summarise(subtype_desc, count = n()) %>% 
+  distinct() %>% 
+  arrange(desc(count))
+
+#The data I'm going to train on, excludes the 'other' category
+dsMOD <- ds %>% 
+  select(comments, subtype_desc) %>% 
+  filter(subtype_desc != '[Other]')
+
+#The data I'm going to try and classify, 
+dsOTHER <- ds %>% 
+  select(comments, subtype_desc) %>% 
+  filter(subtype_desc == '[Other]')
+
+dsMOD$subtype_desc <- as.factor(dsMOD$subtype_desc)
+
+input_len = 100
+word_count = 10000
+
+#creating a word tokenizer
+tokenizer <- text_tokenizer(num_words = word_count)
+tokenizer %>% fit_text_tokenizer(dsMOD$comments)
+sequences <- texts_to_sequences(tokenizer, dsMOD$comments)
+sequences <- pad_sequences(sequences, maxlen = input_len)
+
+labels <- to_categorical(as.integer(dsMOD$subtype_desc))
+
+# Train/test split (80/20)
+val_indices <- sample(1:nrow(dsMOD), size = 0.2 * nrow(dsMOD))
+val_data <- sequences[val_indices, ]
+val_labels <- labels[val_indices, ]
+
+train_data <- sequences[-val_indices, ]
+train_labels <- labels[-val_indices, ]
+
+test_data <- sequences[val_indices, ]
+test_labels <- labels[val_indices, ]
+
+# define the model!
+model <- keras_model_sequential() %>%
+  layer_embedding(input_dim = word_count, output_dim = 32, input_length = input_len) %>% # try different output_dims (32, 10, 60,40)
+  layer_global_average_pooling_1d() %>%
+  layer_dense(units = 16, activation = "sigmoid") %>% # try more layers or change the activation function? (relu, tanh, sigmoid)
+  #layer_dense(units = 5, activation = "tanh") %>%
+  layer_dense(units = 20, activation = "softmax")   
+
+# Compile the model
+model %>% compile(
+  optimizer = "adam", # alternatives (sgd, rmsprop)
+  loss = "categorical_crossentropy",  
+  metrics = c("accuracy")
+)
+
+# Train the model
+history <- model %>% fit(
+  train_data, train_labels,
+  epochs = 250,
+  batch_size = 512,
+  validation_data = list(val_data, val_labels)
+)
+
+####
+####
+####
+# Evaluate the model
+results <- model %>% evaluate(test_data, test_labels)
+print(results)
+
+# Predict the probabilities for each class
+predict_probs <- model %>% predict(test_data)
+
+# Convert probabilities to class labels
+predict_labels <- predict_probs %>% k_argmax() %>% as.integer()
+
+# Convert the one-hot encoded test_labels back to integer labels
+test_labels_int <- test_labels %>% k_argmax() %>% as.integer()
+
+# Convert integer labels to factors for confusion matrix calculation
+predict_labels_factor <- as.factor(predict_labels)
+test_labels_factor <- as.factor(test_labels_int)
+
+# Compute confusion matrix
+confusionMatrix(predict_labels_factor, test_labels_factor)
+
+####
+####
+####
+
+
+
+```
+```{r}
+# APPLYING THE NEURAL NET PREDICTIONS TO THE 'OTHER CATEGORY'
+
+# tokenize the comments column using the same tokenizer from the model training process
+dsOTHER<-dsOTHER %>% select(comments)
+
+new_sequences <- texts_to_sequences(tokenizer, dsOTHER$comments)
+
+new_sequences <- pad_sequences(new_sequences, maxlen = 500)
+
+# Predict the probabilities for each class
+predict_probs <- model %>% predict(new_sequences)
+
+# Convert probabilities to class labels
+predict_labels <- predict_probs %>% k_argmax() %>% as.integer()
+
+dsOTHER$pred <- predict_labels
+
+#Translating the tokenized labels back to labels 
+label_col <- as.factor(dsMOD$subtype_desc)
+levels_map <- levels(label_col)
+
+tokenized_labels <- predict_labels  
+
+# Convert tokenized labels back to text
+text_labels <- levels_map[tokenized_labels]
+#text_labels2 <- levels_map[tokenized_labels + 1]
+# final output
+dsOTHER$Label <- text_labels
+
+# Breakdown of predictions by Category show mass majority predicted as vandalism, and a small portion predicted ROW Trespasser
+dsOTHER %>% 
+  select(Label) %>% 
+  group_by(Label) %>% 
+  summarise(Label, n()) %>% 
+  distinct
+```
+```{r}
+# DATA PREPARATION FOR GRADIENT BOOSTED MOD's
+ds2 <- read_csv("C:\\Users\\corey\\OneDrive\\Desktop\\01_Willamette U\\Semester 1\\Capstone\\trimet_complete.csv")
+ds2$subtype_desc <- as.factor(ds2$subtype_desc)
+ds2$direction <- as.factor(ds2$direction)
+
+# excluded for lack of values/levels
+ds2 <- ds2 %>% 
+  select(-subtype_code,-type_desc, -type_code, -division, -incident_date, -intersection, -location, -lift_location,-subtype_t, -count_t)
+
+ds2$CategoryNums <- as.numeric(ds2$subtype_desc)
+
+ds2 <- ds2 %>% 
+  select(incident_id, CategoryNums, subtype_desc, direction, comments)
+# ***********************************************************************************
+# **** You can use this to convert the numerical categories back to their labels ****
+# ***********************************************************************************
+Key <- ds2 %>% 
+  select(CategoryNums, subtype_desc) %>% 
+  distinct() %>% 
+  arrange(CategoryNums)
+
+# Tokenizing function from class modified to work with our dataset
+string_to_columns <- function(df, j = 500, stem=F){ 
+  library(tidytext)
+  library(SnowballC)
+  data(stop_words)
+  words <- df %>%
+    unnest_tokens(word, comments) %>%
+    anti_join(stop_words) %>% 
+    filter(!(word %in% c(""))) # if there are some really common words to get rid of, I've set this to null
+  
+  if(stem){
+    words <- words %>% 
+      mutate(word = wordStem(word))
+  }
+  
+  words <- words %>% 
+    count(incident_id, word) %>% 
+    group_by(incident_id) %>% 
+    mutate(exists = (n>0)) %>% 
+    ungroup %>% 
+    group_by(word) %>% 
+    mutate(total = sum(n)) %>% 
+    filter(total > j) %>% 
+    pivot_wider(id_cols = incident_id, names_from = word, values_from = exists, values_fill = list(exists=0)) %>% 
+    right_join(dplyr::select(df,incident_id,CategoryNums)) %>% 
+    dplyr::select(-incident_id) %>% 
+    mutate(across(-CategoryNums, ~replace_na(.x, F)))
+}
+```
+```{r}
+#Just a GRADIENT BOOST TEST (1) *** THIS ONE DID THE BEST ***
+set.seed(500)
+#converting tokenized true/false values to 1's an 0's
+ds3 <- string_to_columns(ds2)
+
+ds3$CategoryNums <- as.factor(ds3$CategoryNums)
+
+ds4 <- ds3 %>% select(-CategoryNums)
+
+ds4[] <- lapply(ds4, as.numeric)
+
+ds4$CategoryNums <- ds3$CategoryNums
+
+ds3 <- ds4
+
+#excluding category "1" which corresponds with 'Other'. will be running testing only on labeled data
+ds3 <- ds3 %>% 
+  filter(CategoryNums != "1")
+
+data_split <- initial_split(ds3, prop = 3/4)
+bank_train <- training(data_split)
+bank_test <- testing(data_split)
+
+# set up the recipe
+bank_rec <-
+  recipe(CategoryNums ~ ., data = ds3) %>%
+  step_BoxCox(all_numeric()) %>%
+  step_normalize(all_numeric()) %>%
+  step_dummy(all_nominal(), -all_outcomes()) %>% # dummy variables for all factor/character columns exc
+  step_zv(all_predictors())# %>% # remove all zero variance predictors (i.e. low frequency dummies)
+  #themis::step_upsample(CategoryNums)
+
+xgb_spec <-
+  boost_tree() %>%
+  set_engine("xgboost") %>%
+  set_mode("classification")
+
+bank_wflow <-
+  workflow() %>%
+  add_model(xgb_spec) %>%
+  add_recipe(bank_rec)
+
+bank_fit <- ## fit the model
+  bank_wflow %>%
+  fit(data = bank_train)
+
+cm <- predict(bank_fit, bank_test) %>%
+  bind_cols(bank_test %>% select(CategoryNums)) %>%
+  conf_mat(truth = CategoryNums, .pred_class)
+
+cm %>% autoplot()
+cm %>% summary()
+```
+```{r}
+# NEXT STEPS 
+# - need to apply model to 'OTHER' category 1 items and 
 ```
 
-## R Markdown
+```{r}
+# TRYING GRADIENT BOOST WITH PCA
+# STEP 1: RUNNING THROUGH AN RF TO GET TOP 10 FEATURE IMPORTANTCE 
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+ds6 <- string_to_columns(ds2)
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+ds6$CategoryNums <- as.factor(ds6$CategoryNums)
 
-```{r cars}
-summary(cars)
+ds7 <- ds6 %>% select(-CategoryNums)
+
+ds7[] <- lapply(ds7, as.numeric)
+
+ds7$CategoryNums <- ds6$CategoryNums
+
+ds6 <- ds7
+
+ds6 <- ds6 %>% 
+  filter(CategoryNums != "1")
+
+ds6$CategoryNums <- droplevels(ds6$CategoryNums)
+
+raw_index <- createDataPartition(ds6$CategoryNums , p = 0.8, list = FALSE)
+train <- ds6[raw_index,]
+test  <- ds6[-raw_index, ]
+ctrl <- trainControl(method = "cv", number = 3)
+
+fit <- caret::train(CategoryNums ~ .,
+            data = train, 
+            method = "rf",
+            ntree = 50,
+            tuneLength = 3,
+            trControl = ctrl,
+            metric = "kappa")
+fit
+print(varImp(fit), 10)
+```
+```{r}
+# STEP 2: PCA USING TOP 10 FEATURES
+PCA_data <- ds6 %>% select(trespasser, tow, fight, row, medical, knife, notification, walking, police, tracks)
+
+pr_income = prcomp(x = PCA_data, scale=T, center = T)
+screeplot(pr_income, type="lines")
+
+rownames_to_column(as.data.frame(pr_income$rotation)) %>%
+  select(1:11) %>%
+  filter(abs(PC1) >= 0.35 | abs(PC2) >= 0.35 | abs(PC3) >= 0.35 | abs(PC4) >= 0.35 | abs(PC5) >= 0.35 | abs(PC6) >= 0.35 | abs(PC7) >= 0.35 | abs(PC8) >= 0.35 | abs(PC9) >= 0.35 | abs(PC10) >= 0.35)
+
+summary(pr_income)
+
+FinalData <- 
+  bind_cols(ds6 %>% select(CategoryNums), 
+            as.data.frame(pr_income$x)
+            ) %>%
+  select(1:11) %>%
+  ungroup() %>%
+  rename("PC1_name" = PC1,
+         "PC2_name" = PC2,
+         "PC3_name" = PC3,
+         "PC4_name" = PC4,
+         "PC5_name" = PC5,
+         "PC6_name" = PC6,
+         "PC7_name" = PC7,
+         "PC8_name" = PC8,
+         "PC9_name" = PC9,
+         "PC10_name" = PC10)
+
+```
+```{r}
+# GRADIENT BOOSTING ON MY PCA DATASET. This did well but not the best
+raw_index <- createDataPartition(FinalData$CategoryNums , p = 0.8, list = FALSE)
+train <- FinalData[raw_index,]
+test  <- FinalData[-raw_index, ]
+ctrl <- trainControl(method = "cv", number = 5)
+#weights <- ifelse(income$CategoryNums == 1, 75, 25)
+
+hyperparameters <- expand.grid(interaction.depth = 9, 
+                    n.trees = 300, 
+                    shrinkage = 0.1, 
+                    n.minobsinnode = 4)
+fit <- caret::train(factor(CategoryNums) ~ .,
+            data = train, 
+            method = "gbm",
+            verbose = FALSE,
+            tuneGrid = hyperparameters,
+            trControl = ctrl,
+            metric = "kappa")
+fit
+#confusionMatrix(predict(fit, test), factor(test$CategoryNums))
 ```
 
-## Including Plots
 
-You can also embed plots, for example:
-
-```{r pressure, echo=FALSE}
-plot(pressure)
-```
-
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
