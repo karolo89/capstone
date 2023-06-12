@@ -292,12 +292,12 @@ bank_fold <- rsample::vfold_cv(data = bank_train, v = 5) #using 5-fold cross val
 
 
 # hyperparameter tuning : WARNING - this took several hours for me to complete
-xgb_tune <- tune_grid(
-  bank_wflow,
-  resamples = bank_fold,
-  grid = xgb_grid,
-  control = control_grid(verbose = TRUE)
-)
+# xgb_tune <- tune_grid(
+#   bank_wflow,
+#   resamples = bank_fold,
+#   grid = xgb_grid,
+#   control = control_grid(verbose = TRUE)
+# )
 
 bank_rec <- recipe(CategoryNums ~ ., data = ds3) %>%
   step_BoxCox(all_numeric()) %>%
@@ -322,13 +322,13 @@ bank_wflow <- workflow() %>%
   add_model(xgb_spec)
 
 # Select the best model
-best_model <- select_best(xgb_tune, metric = "accuracy") #curiously, "kappa" and "recall" don't work here as metrics, however "roc_auc" does 
+#best_model <- select_best(xgb_tune, metric = "accuracy") #curiously, "kappa" and "recall" don't work here as metrics, however "roc_auc" does 
 
-best_model #specs of best model
+#best_model #specs of best model
 
 # Fit the best model
 bank_fit <- bank_wflow %>%
-  finalize_workflow(best_model) %>%
+  finalize_workflow(tuned_xgboost_mod) %>% # load tuned_xgboost_mod.rds from repo so you don't have to run tune grid
   fit(data = bank_train)
 
 # Evaluate the model
@@ -339,6 +339,8 @@ cm <- predict(bank_fit, bank_test) %>%
 cm %>% autoplot()
 cm %>% summary()
 
+
+#saveRDS(best_model, file = "tuned_xgboost_mod.rds" )
 ```
 
 
