@@ -33,6 +33,102 @@ summary(df)
 
 ```
 
+## Examining data with subtype as "Other": 
+
+```{r}
+# First, calculate the table (count) of df$subtype_desc
+subtype_counts <- table(df$subtype_desc)
+
+# Then, sort it in decreasing order
+subtype_counts <- sort(subtype_counts, decreasing = TRUE)
+
+# Next, convert it to a dataframe for easy manipulation with ggplot2
+subtype_counts_df <- as.data.frame.table(subtype_counts)
+
+# Finally, create the bar plot
+ggplot(subtype_counts_df, aes(x = Var1, y = Freq)) +
+  geom_bar(stat = "identity") +
+  theme(axis.text.x = element_text(angle = 90)) +
+  labs(x = "Subtype Description", y = "Count") +
+  ggtitle("Counts of each subtype description")
+
+```
+
+Ridiculous amount of missing data, lets see if we can find trends with the missing data.
+
+```{r}
+df$is_other <- ifelse(df$subtype_desc == '[Other]', TRUE, FALSE)
+
+# Filter rows where is_other is TRUE and select only categorical variables
+df_other <- df %>%
+  filter(is_other == TRUE) %>%
+  select(where(is.character), -comments, -incident_date, -incident_id)
+# Create a list of tables, each providing a proportion of each category for each variable
+list_of_tables <- lapply(df_other, function(x) prop.table(table(x, useNA = "ifany")))
+```
+
+```{r}
+# Iterate over each item in the list
+for(i in seq_along(list_of_tables)) {
+  # Print the variable name
+  cat("\nProportions for variable", names(list_of_tables[i]), ":\n")
+  
+  # Print the table
+  print(list_of_tables[[i]])
+}
+
+```
+
+```{r}
+library(zoo)
+
+# Calculate the proportion of 'Other' incidents per day
+df_other_over_time <- df %>%
+  group_by(incident_date) %>%
+  summarize(proportion_other = mean(is_other, na.rm = TRUE))
+
+# Add a 7-day rolling average to the data
+df_other_over_time <- df_other_over_time %>%
+  mutate(rolling_avg = rollmean(proportion_other, 7, fill = NA, align = "right"))
+
+# Plot
+ggplot(df_other_over_time, aes(x = incident_date)) +
+  geom_smooth(aes(y = proportion_other), alpha = 0.3) +
+  geom_smooth(aes(y = rolling_avg), color = "blue") +
+  labs(x = "Date", y = "Proportion of 'Other'", 
+       title = "7-Day Rolling Average of 'Other' Incidents Over Time")
+```
+
+```{r}
+# Filter rows where is_other is TRUE, count occurrences by location, and arrange in descending order
+df_other_by_location <- df %>%
+  filter(is_other) %>%
+  count(location) %>%
+  arrange(desc(n))
+
+# Select the top locations (e.g., top 10)
+top_locations <- df_other_by_location %>%
+  top_n(10)
+
+# Plot
+ggplot(top_locations, aes(x = reorder(location, n), y = n)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  labs(x = "Location", y = "Count", 
+       title = "Top occurrences of 'Other' by location")
+
+```
+
+# Features of Other:
+- type code only = 'ASST'
+- Division only = 'R'
+- Type Description is only 'Security'
+- No subtype codes
+- Appears that other incidents increased in 2022 but are trending downwards 2023
+- Gateway TC has the most out of all locations
+- Incident Subtype is the only subtype_t
+
+
 ```{r, include = FALSE}
 # Load the lubridate package
 library(lubridate)
