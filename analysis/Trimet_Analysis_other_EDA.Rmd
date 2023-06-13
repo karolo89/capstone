@@ -1,0 +1,490 @@
+---
+title: "TriMet Analysis"
+author: "Karol Orozco, Corey Cassell, Justus Eaglesmith, Charles Hanks, & CorDarryl Hall"
+date: "`r Sys.Date()`"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, include=FALSE}
+library(tidyverse)
+library(lubridate)
+library(ggplot2)
+library(gridExtra)
+library(forcats)
+library(stringr)
+library(tm)
+library(SnowballC)
+library(RColorBrewer)
+library(readxl)
+```
+
+# Exploratory Data Analysis of Trimet Security Data, 2017 - 2023
+
+```{r, include=FALSE}
+df <- read_csv('https://raw.githubusercontent.com/karolo89/capstone/main/data/trimet_complete.csv')
+summary(df)
+
+
+```
+
+```{r}
+# First, calculate the table (count) of df$subtype_desc
+subtype_counts <- table(df$subtype_desc)
+
+# Then, sort it in decreasing order
+subtype_counts <- sort(subtype_counts, decreasing = TRUE)
+
+# Next, convert it to a dataframe for easy manipulation with ggplot2
+subtype_counts_df <- as.data.frame.table(subtype_counts)
+
+# Finally, create the bar plot
+ggplot(subtype_counts_df, aes(x = Var1, y = Freq)) +
+  geom_bar(stat = "identity") +
+  theme(axis.text.x = element_text(angle = 90)) +
+  labs(x = "Subtype Description", y = "Count") +
+  ggtitle("Counts of each subtype description")
+
+```
+
+Ridiculous amount of missing data, lets see if we can find trends with the missing data.
+
+```{r}
+df$is_other <- ifelse(df$subtype_desc == '[Other]', TRUE, FALSE)
+
+# Filter rows where is_other is TRUE and select only categorical variables
+df_other <- df %>%
+  filter(is_other == TRUE) %>%
+  select(where(is.character), -comments, -incident_date, -incident_id)
+# Create a list of tables, each providing a proportion of each category for each variable
+list_of_tables <- lapply(df_other, function(x) prop.table(table(x, useNA = "ifany")))
+```
+
+```{r}
+# Iterate over each item in the list
+for(i in seq_along(list_of_tables)) {
+  # Print the variable name
+  cat("\nProportions for variable", names(list_of_tables[i]), ":\n")
+  
+  # Print the table
+  print(list_of_tables[[i]])
+}
+
+```
+
+```{r}
+library(zoo)
+
+# Calculate the proportion of 'Other' incidents per day
+df_other_over_time <- df %>%
+  group_by(incident_date) %>%
+  summarize(proportion_other = mean(is_other, na.rm = TRUE))
+
+# Add a 7-day rolling average to the data
+df_other_over_time <- df_other_over_time %>%
+  mutate(rolling_avg = rollmean(proportion_other, 7, fill = NA, align = "right"))
+
+# Plot
+ggplot(df_other_over_time, aes(x = incident_date)) +
+  geom_smooth(aes(y = proportion_other), alpha = 0.3) +
+  geom_smooth(aes(y = rolling_avg), color = "blue") +
+  labs(x = "Date", y = "Proportion of 'Other'", 
+       title = "7-Day Rolling Average of 'Other' Incidents Over Time")
+```
+
+```{r}
+# Filter rows where is_other is TRUE, count occurrences by location, and arrange in descending order
+df_other_by_location <- df %>%
+  filter(is_other) %>%
+  count(location) %>%
+  arrange(desc(n))
+
+# Select the top locations (e.g., top 10)
+top_locations <- df_other_by_location %>%
+  top_n(10)
+
+# Plot
+ggplot(top_locations, aes(x = reorder(location, n), y = n)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  labs(x = "Location", y = "Count", 
+       title = "Top occurrences of 'Other' by location")
+
+```
+
+# Features of Other:
+- type code only = 'ASST'
+- Division only = 'R'
+- Type Description is only 'Security'
+- No subtype codes
+- Appears that other incidents increased in 2022 but are trending downwards 2023
+- Gateway TC has the most out of all locations
+- Incident Subtype is the only subtype_t
+
+
+
+```{r, include = FALSE}
+# Load the lubridate package
+library(lubridate)
+
+# Convert the incident_date to a date-time object and extract the year
+df$year <- year(as.POSIXct(df$incident_date, format="%m/%d/%Y %H:%M"))
+
+# Now calculate counts and average for each year
+df_year_counts <- df %>%
+  count(year) %>%
+  mutate(avg = mean(n),
+         color = ifelse(n > avg, "Above Average", "Below Average"))
+
+# Convert the incident_date to a date-time object and extract the month
+df$month <- month(as.POSIXct(df$incident_date, format="%m/%d/%Y %H:%M"), label=TRUE)
+
+# Now calculate counts and average for each month
+df_month_counts <- df %>%
+  count(month) %>%
+  mutate(avg = mean(n),
+         color = ifelse(n > avg, "Above Average", "Below Average"))
+# Convert the incident_date to a date-time object and extract the day
+df$day <- day(as.POSIXct(df$incident_date, format="%m/%d/%Y %H:%M"))
+
+# Now calculate counts and average for each day
+df_day_counts <- df %>%
+  count(day) %>%
+  mutate(avg = mean(n),
+         color = ifelse(n > avg, "Above Average", "Below Average"))
+
+# Convert the incident_date to a date-time object and extract the hour
+df$hour <- hour(as.POSIXct(df$incident_date, format="%m/%d/%Y %H:%M"))
+
+# Now calculate counts and average for each hour
+df_hour_counts <- df %>%
+  count(hour) %>%
+  mutate(avg = mean(n),
+         color = ifelse(n > avg, "Above Average", "Below Average"))
+
+
+```
+
+
+
+# Yearly Counts
+
+```{r}
+
+# Plot yearly counts
+ggplot(df_year_counts, aes(x = year, y = n, fill = color)) + 
+  geom_bar(stat = "identity", show.legend = FALSE) +
+  geom_hline(aes(yintercept = avg), linetype = "dashed", color = "black") +
+  scale_fill_manual(values = c("Above Average" = "#FF7F7F", "Below Average" = "#7F7FFF")) +
+  theme_minimal() +
+  labs(x = "Year", y = "Count", fill = "", title = "Number of Security Incidents Per Year")
+```
+
+The incidents are increasing annually so it is important to get a handle on this. Especially considering 2022 had tremendously more results than 2021. A better plot for this would be using a timeseries plot. 
+
+# Monthly Counts
+
+```{r}
+# Calculate counts and average
+df_month_counts <- df %>%
+  count(month) %>%
+  mutate(avg = mean(n),
+         color = ifelse(n > avg, "Above Average", "Below Average"))
+
+ggplot(df_month_counts, aes(x = month, y = n, fill = color)) + 
+  geom_bar(stat = "identity", show.legend = FALSE) +
+  geom_hline(aes(yintercept = avg), linetype = "dashed", color = "black") +
+  scale_fill_manual(values = c("Above Average" = "#FF7F7F", "Below Average" = "#7F7FFF")) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5)) +
+  labs(y = "Count", fill = "")
+
+```
+
+We should focus on the months Dec - May as those have the most incidents and are above the average. It would be valuable to understand what could be causing the increase in these specific months as well.
+
+
+
+# Daily Counts
+
+```{r}
+# Calculate counts and average for each day
+df_day_counts <- df %>%
+  count(day) %>%
+  mutate(avg = mean(n),
+         color = ifelse(n > avg, "Above Average", "Below Average"))
+
+# daily counts
+ggplot(df_day_counts, aes(x = day, y = n, fill = color)) + 
+  geom_bar(stat = "identity", show.legend = FALSE) +
+  geom_hline(aes(yintercept = avg), linetype = "dashed", color = "black") +
+  scale_fill_manual(values = c("Above Average" = "#FF7F7F", "Below Average" = "#7F7FFF")) +
+  theme_minimal() +
+  labs(x = "Day of Month", y = "Count", fill = "")
+
+
+```
+
+Days are a little sporatic but it looks like earlier in the month and later in the months there are more incidents, first and last week of the month specifically.
+
+# Hourly Incidents
+
+```{r}
+#Hourly incidents
+library(lubridate)
+
+# Create a new hour field
+df$hour <- hour(as.POSIXct(df$incident_date, format="%m/%d/%Y %H:%M"))
+
+# Calculate counts and average for each hour
+df_hour_counts <- df %>%
+  count(hour) %>%
+  mutate(avg = mean(n),
+         color = ifelse(n > avg, "Above Average", "Below Average"))
+
+# Plot hourly counts
+ggplot(df_hour_counts, aes(x = hour, y = n, fill = color)) + 
+  geom_bar(stat = "identity", show.legend = FALSE) +
+  geom_hline(aes(yintercept = avg), linetype = "dashed", color = "black") +
+  scale_fill_manual(values = c("Above Average" = "#FF7F7F", "Below Average" = "#7F7FFF")) +
+  theme_minimal() +
+  labs(x = "Hour of the Day", y = "Count", fill = "")
+
+
+```
+
+Clearly it shows that many incidents occur at hour 6-12 and 3-12a. Makes sense as most people are commuting or using the transportation services in the morning before work/school and after work/school.
+
+
+```{r}
+#Parsing text to extract common themes amoungst reported incidents
+comments_corpus <- Corpus(VectorSource(df$comments))
+
+comments_corpus <- tm_map(comments_corpus, content_transformer(tolower))
+comments_corpus <- tm_map(comments_corpus, removePunctuation)
+comments_corpus <- tm_map(comments_corpus, removeNumbers)
+comments_corpus <- tm_map(comments_corpus, removeWords, stopwords("english"))
+comments_corpus <- tm_map(comments_corpus, stemDocument)
+
+```
+
+```{r}
+library(tidytext)
+# Converting the text to lower case
+df$comments <- tolower(df$comments)
+
+# Removing punctuation, numbers, stop words and white spaces
+df$comments <- removePunctuation(df$comments)
+df$comments <- removeNumbers(df$comments)
+df$comments <- removeWords(df$comments, stopwords("english"))
+df$comments <- stripWhitespace(df$comments)
+
+# Tokenizing the words
+df_tokens <- df %>%
+  unnest_tokens(word, comments)
+
+# Counting the frequency of each word
+df_word_counts <- df_tokens %>%
+  count(word, sort = TRUE)
+
+# Filtering out words with less than 3 characters
+df_word_counts <- df_word_counts[nchar(df_word_counts$word) > 2, ]
+
+# Displaying the top 10 words
+top_10_words <- df_word_counts %>%
+  top_n(10) %>%
+  mutate(word = reorder(word, n))
+
+ggplot(top_10_words) +
+  geom_col(aes(x = word, y = n, fill = n)) +
+  labs(x = "Term", y = "Frequency", title = "Top 10 Terms in Comments") +
+  coord_flip()
+```
+Removing common words: 
+```{r}
+dtm <- df %>%
+unnest_tokens(word, comments) %>%
+anti_join(stop_words) %>% # get rid of stop words
+filter(!(word %in% c("train","notification", "police", "reports","cleared","trains","time","ave","due","check","operator","supervisor", "incident", "called", "reported", "report", "arrived", "unit", "platform", "person", "requested", "individual", "stated", "delay", "requesting"))) %>% #removing common words 
+count(incident_id, word) %>%
+group_by(incident_id) %>%
+mutate(freq = n/sum(n)) %>%
+mutate(exists = (n>0)) %>%
+ungroup %>%
+group_by(word) %>%
+mutate(total = sum(n))
+
+
+dtm %>% 
+count(word, sort = TRUE) %>% 
+  filter(n > 1000) %>%
+    ggplot(aes(x = n , y= reorder(word,n))) + geom_col() + labs(y = NULL) + labs(title = "Most Common Words 2")
+```
+
+Incidents occur mostly on the train it appears, however we should look at the next most common phrases or nouns/adjectives to get a better understanding.
+
+
+# Analyzing Security Incidents at Night 
+
+What type of security incidents occurs most frequently as night ? This will require subcategory per each incident. At present in this dataset, 82% of incidents have subcategory of 'other'. We could generate subcategories through text analysis of `comments` column.
+
+```{r}
+df %>% group_by(subtype_desc) %>% count() 
+14591/nrow(df)
+
+```
+Winter : December - February 
+Spring : April - June 
+Summer : July - August 
+Fall : September - November 
+
+```{r}
+df = df %>% mutate(season = factor(case_when(
+                          month %in% c('Dec','Jan','Feb') ~ 'Winter', 
+                          month %in% c('Mar','Apr', 'May') ~ 'Spring', 
+                          month %in% c('Jun', 'Jul', 'Aug') ~ 'Summer', 
+                          month %in% c('Sep', 'Oct','Nov') ~ 'Fall')),
+              night_time = factor(ifelse(hour >= 20 | hour <= 4, 1, 0)))
+
+```
+
+
+Approximating nighttime as between the hours of 20:00 and 05:00, how many incidents occur at night vs during day?  
+```{r}
+df %>% group_by(night_time, season) %>% count()  %>% 
+            ggplot(aes(x = season, y = n, fill = night_time)) + geom_col() + facet_grid(~ night_time) + 
+            scale_discrete_manual(aesthetics = c("fill"), values = c("#FF7F7F", "#7F7FFF")) + labs(title = "# of Incidents, Day vs Night Per Season")
+ 
+```
+We see a decrease in night time incidents during summer time. perhaps this suggests that more incidents occur when more people are using TriMet services due to weather. For example, people seeking shelter in max trains due to cold and wet conditions. 
+
+
+What is spread of night incidents in one year?
+```{r}
+ggplot(df %>% filter(night_time == 1) %>% 
+  count(month) %>%
+  mutate(avg = mean(n),
+         color = ifelse(n > avg, "Above Average", "Below Average")), aes(x = month, y = n, fill = color)) + 
+        geom_bar(stat = "identity", show.legend = FALSE) +
+        geom_hline(aes(yintercept = avg), linetype = "dashed", color = "black") +
+        scale_fill_manual(values = c("Above Average" = "#FF7F7F", "Below Average" = "#7F7FFF")) +
+        theme_minimal() +
+        theme(axis.text.x = element_text(angle = 90, vjust = 0.5)) +
+        labs(y = "Count", fill = "") + labs(title = "Night Incidents by Month")
+```
+In summer and fall we see a decrease in incidents at night. 
+
+```{r}
+df %>% group_by(year, night_time) %>% count() %>% ggplot(aes(x = year, y = n, fill = night_time)) + geom_col() 
+```
+
+The number of incidents at night is proportional to total number of incidents per year. 
+
+Where are the most incidents occurring at night? 
+
+```{r}
+df %>% filter(night_time == 1) %>%  
+  group_by(location, type_desc ) %>% 
+    count() %>% 
+      arrange(desc(n))
+
+```
+Elmonica is where the MAX trains are stored and serviced - most trains in the morning start here. It would make sense that security personnel are reporting from here. 
+Gateway is a hot spot for all types of activity. `Cleveland Avenue` we assume is in reference to MAX station in Gresham (final stop for the Blue Line) Cleveland is mentioned as a place where 'sleepers' are found. 
+
+
+In 2023, have we seen a downward trend in incidents at night given the increased presence of security personnel starting in March 2023? 
+
+```{r}
+df = df %>% mutate(y_m_d = date(as.POSIXct(incident_date, format="%m/%d/%Y %H:%M"))) # adding date only column 
+
+df %>% filter(year == 2023) %>% group_by(y_m_d, night_time) %>% count() %>%  ggplot(aes(x = y_m_d, y = n, fill = night_time))  + geom_point() + 
+  geom_smooth(method = 'lm', se = FALSE) + 
+  facet_grid(~night_time)
+
+
+```
+
+What if we compare the same time interval, one year ago? 
+```{r}
+df %>% filter(year %in% c(2022,2023))%>%
+  filter((y_m_d >= "2022-01-01" & y_m_d <= "2022-05-16") | y_m_d >= "2023-01-01")%>% 
+  group_by(y_m_d,year, night_time) %>% count() %>%  ggplot(aes(x = y_m_d, y = n, color = night_time))  + geom_point() + 
+  geom_smooth(method = 'lm', se = FALSE, color = "black") + 
+  facet_grid(night_time~year) + 
+  theme_minimal() + labs(title = "Jan - May, 2022 vs 2023")
+
+```
+Nighttime incidents were trending upward in Jan - May 2022, and now they are trending downward Jan - May 2023. 
+
+
+# PPB Crime Data: 
+
+How does trimet's security incident increase in 2022 compare with PPB crime data ? We want to rule out the reason for this increase in 2022 as just an increase in reporting / security personel. 
+
+```{r}
+c_17_23 = read_csv('https://raw.githubusercontent.com/karolo89/capstone/main/data/ppb_2017_2023.csv')
+```
+
+```{r}
+#formatting date and time columns 
+c_17_23 = c_17_23 %>% mutate(OccurDate = as.POSIXct(OccurDate, format = "%m/%d/%Y"), 
+                             ReportDate = as.POSIXct(ReportDate, format = "%m/%d/%Y"),
+                             OccurTime = hms::as.hms(as.POSIXct(OccurTime, format = "%H%M"))) %>% relocate(OccurDate, OccurTime, ReportDate)
+
+#coercing char cols into factors 
+cols2factor = c("CrimeAgainst", "Neighborhood", "OffenseCategory", "OffenseType")
+c_17_23[cols2factor] = lapply(c_17_23[cols2factor], factor)
+
+#parsing year, month, hour 
+c_17_23 = c_17_23 %>% mutate(year = factor(year(OccurDate)), 
+                             month = factor(month(OccurDate)), 
+                             hour = hour(OccurTime))
+
+```
+
+Counting events by year, month, hour
+```{r}
+#did 2023 also have a signifcant increase in incidents report to PPB? 
+c_17_23 %>% 
+  filter(OccurDate >= "2017-01-01" & OccurDate < "2023-01-01") %>%
+      group_by(year) %>% 
+        count() %>% 
+           mutate(is_2022 = year == 2022) %>% 
+            ggplot(aes(x = year, y = n)) + geom_col(aes(fill = is_2022)) + geom_hline(aes(yintercept = mean(n)), linetype = "dashed", color = "black") + labs(title = "Number of incidents report to PPB per year")
+
+#do we see the same trend where more incidents occur Dec - May? 
+c_17_23 %>% 
+  filter(OccurDate >= "2017-01-01" & OccurDate < "2023-01-01") %>% 
+    group_by(month) %>% 
+      count() %>% ggplot(aes(x = month, y = n)) + geom_col() 
+
+# nope 
+
+# at what hour do the most incidents occur? 
+c_17_23 %>% 
+  filter(OccurDate >= "2017-01-01" & OccurDate < "2023-01-01") %>% 
+    group_by(hour) %>% 
+      count() %>% 
+        mutate(is_midnight = hour == 0) %>% ggplot(aes(x = hour, y = n)) + geom_col(aes(fill = is_midnight)) 
+
+
+  
+```
+
+What were the most common type of incidents in 2022 vs 2021  ?
+
+```{r}
+c_17_23 %>% filter(year %in% c(2020:2022)) %>%
+  group_by(OffenseType, year) %>% count() %>% 
+  filter( n > 100) %>% 
+    ggplot(aes(x = fct_reorder(OffenseType,n), y = n)) + geom_col() + coord_flip() + labs(title = "Most Common type of crimes in 2022") + facet_grid(~year)
+
+#huge increase in vehicle theft and vandalism 
+
+```
