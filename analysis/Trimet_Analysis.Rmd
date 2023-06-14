@@ -30,7 +30,13 @@ library(readxl)
 df <- read_csv('https://raw.githubusercontent.com/karolo89/capstone/main/data/trimet_complete.csv')
 summary(df)
 
+view(df)
 
+df %>% filter(subtype_desc != "[Other]")
+
+unique(df$subtype_desc)
+
+df %>% filter(str_detect(location, "Tc"))
 ```
 
 ## Examining data with subtype as "Other": 
@@ -615,7 +621,7 @@ df %>% filter(str_detect(comments, "hate speech"))
 ```
 bio fluids 
 ```{r}
-bio_words = c('[Uu]rin','[Bb]lood','[Bb]leed', '[Vv]omit','[Ss]ubstance', '[Bbio] harzard')
+bio_words = c('[Uu]rin','[Bb]lood','[Bb]leed', '[Vv]omit','[Ss]ubstance', '[Bb]io harzard')
 df %>% filter(str_detect(comments, pattern = paste(bio_words, collapse = "|")))
 ```
 
