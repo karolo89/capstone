@@ -631,5 +631,55 @@ People try to break into TVMs to steal tickets / money.
 df %>% filter(str_detect(subtype_desc,'TVM'))
 ```
 
+Using sf package to load TriMet transit center shapefile: 
 
+```{r}
+library(sf)
+
+shape = read_sf(dsn = '/Users/chanks/workspace/capstone/data/shapefiles/tm_tran_cen', 
+                layer = 'tm_tran_cen')
+
+shape %>% head()
+
+#does it plot? 
+shape %>% ggplot() + geom_sf() + theme_bw() 
+```
+#loading spatial data from package maps
+```{r}
+library(maps)
+
+tm_counties = map_data("county","oregon") %>% 
+  select(lon = long, lat, group, id = subregion) %>% filter(id %in% c("multnomah", "clackamas", "washington"))
+
+ggplot(tm_counties, aes(lon, lat, group = group)) + 
+  geom_polygon(fill = "white", colour = "grey50") + 
+  coord_quickmap()
+```
+```{r}
+library(tigris)
+options(tigris_use_cache = TRUE)
+
+this.year = 2020
+
+mult_tracts = tracts(state = 'OR', county = "Multnomah", cb = T, year = this.year)
+clack_tracts = tracts(state = 'OR', county = "Clackamas", cb = T, year = this.year)
+wash_tracts = tracts(state = 'OR', county = "Washington", cb = T, year = this.year)
+
+tri_county_tracts = bind_rows(mult_tracts,clack_tracts,wash_tracts)
+
+
+plot(tri_county_tracts)
+```
+
+Plot of Trimet Transit Center Across 3 Counties 
+```{r}
+ggplot() + geom_sf(data = tri_county_tracts) + 
+          geom_sf(data = shape, color = "dodgerblue", size = 5) + 
+          labs(title =  "TriMet Transit Centers") +
+          #geom_sf_text(data = shape, aes(label = name), size = 2, nudge_y = -.0002) + 
+          coord_sf(xlim=c(-123.1, -122.4), ylim = c(45.3,45.6)) 
+
+
+?geom_sf_text()
+```
 
