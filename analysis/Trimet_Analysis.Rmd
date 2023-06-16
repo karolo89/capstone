@@ -30,13 +30,7 @@ library(readxl)
 df <- read_csv('https://raw.githubusercontent.com/karolo89/capstone/main/data/trimet_complete.csv')
 summary(df)
 
-view(df)
 
-df %>% filter(subtype_desc != "[Other]")
-
-unique(df$subtype_desc)
-
-df %>% filter(str_detect(location, "Tc"))
 ```
 
 ## Examining data with subtype as "Other": 
@@ -681,5 +675,41 @@ ggplot() + geom_sf(data = tri_county_tracts) +
 
 
 ?geom_sf_text()
+```
+Renaming transit center names according to shapefile:
+```{r}
+#subsetting dataset with "
+tc = df %>% filter(str_detect(location, "Tc")) 
+
+unique(tc$location)
+unique(shape$name)
+
+tc2 = tc %>% mutate(location = 
+                case_when(
+                  grepl("Rose",location) ~ "Rose Quarter Transit Center", 
+                  grepl("Beaverton",location) ~ "Beaverton Transit Center",
+                  grepl("Gateway",location) ~ "Gateway/NE 99th Ave Transit Center",
+                  grepl("Clack",location) ~ "Clackamas Town Center Transit Center",
+                  grepl("Sunset",location) ~ "Sunset Transit Center",
+                  grepl("Willow",location) ~ "Willow Creek/SW 185th Ave Transit Center",
+                  grepl("Gresham",location) ~ "Gresham Central Transit Center",
+                  grepl("Hillsboro",location) ~ "Hillsboro Central/SE 3rd Ave Transit Center",
+                  grepl("Lombard Tc",location) ~ "N Lombard Transit Center",
+                  grepl("Tigard",location) ~ "Tigard Transit Center",
+                  grepl("Hollywood",location) ~ "Hollywood/NE 42nd Ave Transit Center",
+                  grepl("Rose",location) ~ "Rose Quarter Transit Center",
+                  grepl("Sunset",location) ~ "Sunset Transit Center"))
+                  
+unique(tc2$location)
+
+```
+
+```{r}
+#renaming name to location so that they share col name to join on 
+shape = shape %>% rename(location = name)
+
+tc2 = tc2 %>% left_join(shape, by = "location")
+#Okay! We have now have 3,608 security incidents that have complete special data.
+
 ```
 
