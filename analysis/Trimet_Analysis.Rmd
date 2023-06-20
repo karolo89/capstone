@@ -704,12 +704,32 @@ unique(tc2$location)
 
 ```
 
+### Converting shapefile data to lon + lat: 
+[StackExchange](https://gis.stackexchange.com/questions/296170/r-shapefile-transform-longitude-latitude-coordinates) on converting shapefile to WGS84 coordinates using `sf` package
+
+```{r}
+tc_coords = st_transform(shape,"+proj=longlat +ellps=WGS84 +datum=WGS84") %>% st_coordinates()
+
+shape = bind_cols(shape, tc_coords) %>% rename(lat = Y, lon = X)
+```
+
+
 ```{r}
 #renaming name to location so that they share col name to join on 
-shape = shape %>% rename(location = name)
+shape = shape %>% mutate(location = name) %>% relocate(location) %>% select(-name) # for some reason rename() was throwing an error, so this is a work-around to change name col to location for joining
 
 tc2 = tc2 %>% left_join(shape, by = "location")
 #Okay! We have now have 3,608 security incidents that have complete special data.
 
+tc2 %>% filter(year == 2022) %>% group_by(location) %>% count() %>%
+   ggplot()  + geom_sf(data = tri_county_tracts) +
+           geom_sf(data = tc2, aes(size = n), color = "dodgerblue") +
+           labs(title =  "TriMet Transit Centers") +
+           #geom_sf_text(data = shape, aes(label = name), size = 2, nudge_y = -.0002) +
+           coord_sf(xlim=c(-123.1, -122.4), ylim = c(45.3,45.6))
 ```
+
+
+
+
 
