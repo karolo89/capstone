@@ -737,7 +737,38 @@ tc_2022_num_incidents %>%
   theme(legend.position = "top")
 ```
 
+```{r}
+library(plotly)
 
+tc_2017_2023 = tc2 %>%
+  group_by(location, year) %>% count() %>% 
+    left_join(tc2 %>% select(location, lon, lat), by = "location") %>% group_by(location, year, n) %>% unique()
 
+plot <- tc_2017_2023 %>%
+  ggplot() +
+  geom_col(aes(x = location, y = n, fill = factor(year))) +
+  coord_flip()
+
+ggplotly(plot, dynamicTicks = TRUE)
+```
+
+Exploring other shapes files 
+
+```{r}
+shape2 = read_sf(dsn = '/Users/chanks/workspace/capstone/data/shapefiles/tm_route_stops', 
+                layer = 'tm_route_stops')
+
+head(shape2)
+```
+```{r}
+routes = ggplot() + geom_sf(data = tri_county_tracts) + 
+          geom_sf(data = shape2, aes(color = factor(rte)), alpha = .5, size = 1) + 
+          labs(title =  "TriMet Routes & Stops") +
+          #geom_sf_text(data = shape, aes(label = name), size = 2, nudge_y = -.0002) + 
+          coord_sf(xlim=c(-123.1, -122.4), ylim = c(45.3,45.6)) + 
+          theme(legend.position = "none")
+
+ggplotly(routes)
+```
 
 
