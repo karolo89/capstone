@@ -728,6 +728,20 @@ tc2 %>% filter(year == 2022) %>% group_by(location) %>% count() %>%
            #geom_sf_text(data = shape, aes(label = name), size = 2, nudge_y = -.0002) +
            coord_sf(xlim=c(-123.1, -122.4), ylim = c(45.3,45.6))
 ```
+```{r}
+tc_2022_num_incidents = tc2 %>% filter(year == 2022) %>% 
+  group_by(location) %>% count() %>% 
+    left_join(tc2 %>% select(location, lon, lat), by = "location") %>% group_by(location, n) %>% unique()
+
+tc_2022_num_incidents %>% 
+  ggplot() + 
+  geom_sf(data = tri_county_tracts) +
+  geom_point(mapping = aes(x = lon, y = lat, size = n, color = location)) +
+  labs(title =  "Security Incident Count in 2022 at TriMet Transit Centers") +
+  #geom_sf_label(data = shape, aes(label = location), size = 2, nudge_y = -.04) +
+  coord_sf(xlim=c(-123.1, -122.4), ylim = c(45.4,45.6)) +
+  theme(legend.position = "top")
+```
 
 
 
