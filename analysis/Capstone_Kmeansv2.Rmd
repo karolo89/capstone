@@ -1,0 +1,359 @@
+---
+title: "Capstone_Classification"
+author: "Corey"
+date: "2023-06-10"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(tidytext)
+library(caret)
+library(fastDummies)
+library(randomForest)
+library(dplyr)
+library(text)
+library(tidymodels)
+library(NeuralNetTools)
+library(broom)
+```
+
+```{r}
+# DATA PREPARATION
+ds2 <- read_csv("C:\\Users\\corey\\OneDrive\\Desktop\\01_Willamette U\\Semester 1\\Capstone\\trimet_complete.csv")
+
+ds2$subtype_desc <- as.factor(ds2$subtype_desc)
+ds2$direction <- as.factor(ds2$direction)
+
+# excluded for lack of values/levels
+ds2 <- ds2 %>% 
+  select(-subtype_code,-type_desc, -type_code, -division, -incident_date, -intersection, -location, -lift_location,-subtype_t, -count_t)
+
+ds2$CategoryNums <- as.numeric(ds2$subtype_desc)
+
+ds2 <- ds2 %>% 
+  select(incident_id, CategoryNums, subtype_desc, direction, comments)
+
+Key <- ds2 %>% 
+  select(CategoryNums, subtype_desc) %>% 
+  distinct() %>% 
+  arrange(CategoryNums)
+
+string_to_columns <- function(df, j = 500, stem=F){ 
+  library(tidytext)
+  library(SnowballC)
+  data(stop_words)
+  words <- df %>%
+    unnest_tokens(word, comments) %>%
+    anti_join(stop_words) %>% # get rid of stop words
+    filter(!(word %in% c(""))) # if there are some really common words to get rid of
+  
+  if(stem){
+    words <- words %>% 
+      mutate(word = wordStem(word))
+  }
+  
+  words <- words %>% 
+    count(incident_id, word) %>% 
+    group_by(incident_id) %>% 
+    mutate(exists = (n>0)) %>% 
+    ungroup %>% 
+    group_by(word) %>% 
+    mutate(total = sum(n)) %>% 
+    filter(total > j) %>% 
+    pivot_wider(id_cols = incident_id, names_from = word, values_from = exists, values_fill = list(exists=0)) %>% 
+    right_join(dplyr::select(df,incident_id,CategoryNums)) %>% 
+    dplyr::select(-CategoryNums) %>% 
+    mutate(across(-incident_id, ~replace_na(.x, F)))
+}
+```
+#PCA on top features
+
+```{r, fig.width=7}
+# RUNNING THROUGH AN RF TO GET TOP 10 FEATURE IMPORTANTCE 
+set.seed(500)
+
+ds6 <- string_to_columns(ds2)
+
+#ds6$CategoryNums <- as.factor(ds6$CategoryNums)
+#ds6$CategoryNums <- droplevels(ds6$CategoryNums)
+
+ds7 <- ds6 %>% select(-incident_id)
+
+ds7[] <- lapply(ds7, as.numeric)
+
+ds7$incident_id <- ds6$incident_id
+
+# PCA USING TOP 10 FEATURES
+PCA_data <- ds7 %>% select(-incident_id)
+
+pr_income = prcomp(x = PCA_data, scale=T, center = T)
+screeplot(pr_income, type="lines")
+
+pca_sensitivtiy <- .3
+
+top_pca_features <- rownames_to_column(as.data.frame(pr_income$rotation)) %>%
+  select(1:11) %>%
+  filter(abs(PC1) >= pca_sensitivtiy | abs(PC2) >= pca_sensitivtiy | abs(PC3) >= pca_sensitivtiy | abs(PC4) >= pca_sensitivtiy | abs(PC5) >= pca_sensitivtiy | abs(PC6) >= pca_sensitivtiy | abs(PC7) >= pca_sensitivtiy | abs(PC8) >= pca_sensitivtiy | abs(PC9) >= pca_sensitivtiy | abs(PC10) >= pca_sensitivtiy)
+
+feature_list <- as.vector(top_pca_features$rowname)
+
+# feature_list
+# summary(pr_income)
+
+top_pca_features
+
+FinalData <-
+  bind_cols(ds7 %>% select(incident_id),
+            as.data.frame(pr_income$x)
+            ) %>%
+  select(1:11) %>%
+  ungroup() %>%
+  rename("PC1_name" = PC1,
+         "PC2_name" = PC2,
+         "PC3_name" = PC3,
+         "PC4_name" = PC4,
+         "PC5_name" = PC5,
+         "PC6_name" = PC6,
+         "PC7_name" = PC7,
+         "PC8_name" = PC8,
+         "PC9_name" = PC9,
+         "PC10_name" = PC10)
+
+FinalData
+
+#pr_income
+biplot(pr_income, choices = c(2,3), cex = .5)
+
+# biplot(pr_income,
+# choices = c(2, 3), xlabs = rep("*", 150))
+# fviz_pca_biplot(pr_income, c )
+
+```
+# Running K means on just the tokenized columsn showed very little desnsity differentiation for each of my feature columns. difficult to get any value. 
+
+```{r, fig.width = 10}
+# K Means
+set.seed(500)
+
+ds8 <- string_to_columns(ds2)
+
+#ds6$CategoryNums <- as.factor(ds6$CategoryNums)
+#ds6$CategoryNums <- droplevels(ds6$CategoryNums)
+
+ds9 <- ds8 %>% select(-incident_id)
+
+ds9[] <- lapply(ds9, as.numeric)
+
+ds9$incident_id <- ds8$incident_id
+
+PCA_data <- ds9 %>% select(-incident_id)
+
+kclust <- kmeans(PCA_data, centers = 10)
+
+# kclust$centers
+# glance(kclust)
+
+wink <- augment(kclust, PCA_data)
+
+wink %>%
+pivot_longer(all_of(feature_list),names_to = "feature") %>%
+ggplot(aes(value, fill=.cluster))+
+geom_density(alpha=0.3)+
+facet_wrap(~feature)
+```
+# Instead using dimensionality reduction on my tokenized data I took the top 10 PCA features, I set a threshold of sensitivity. below you can see the plot of each pca component faceted and each cluster against each other. I arbitrarily chose 5 clusters. 
+
+(1) Oberservation - pc2/3/4 show the best density differentiation
+
+```{r}
+set.seed(500)
+# K means on dimensionality reduced data
+PCA_data2 <- FinalData %>% select(-incident_id)
+
+kclust <- kmeans(PCA_data2, centers = 5)
+
+wink <- augment(kclust, PCA_data2)
+
+feature_list2 <- c("PC1_name","PC2_name","PC3_name","PC4_name","PC5_name","PC6_name","PC7_name","PC8_name","PC9_name","PC10_name")
+
+wink %>%
+pivot_longer(all_of(feature_list2),names_to = "feature") %>%
+ggplot(aes(value, fill=.cluster))+
+geom_density(alpha=0.3)+
+facet_wrap(~feature)+
+theme_bw()
+
+
+
+```
+# Clustering for PCA2&3 was the best defined. looked at this for a few different graphs. based on this information I would use these two components to define the clusters
+
+```{r}
+wink %>% 
+  ggplot(aes(PC2_name, PC3_name, color = .cluster) )+
+  geom_point(alpha = .1)+
+  theme_bw()+
+  labs(title = "2 vs. 3")
+
+wink %>% 
+  ggplot(aes(PC2_name, PC4_name, color = .cluster) )+
+  geom_point(alpha = .1)+
+  theme_bw()+
+  labs(title = "2 vs. 4")
+
+wink %>% 
+  ggplot(aes(PC3_name, PC4_name, color = .cluster) )+
+  geom_point(alpha = .1)+
+  theme_bw()+
+  labs(title = "3 vs. 4")
+```
+# K means 2
+```{r}
+set.seed(500)
+# K means on dimensionality reduced data
+PCA_data2 <- FinalData %>% select(-incident_id)
+
+kclust <- kmeans(PCA_data2, centers = 2)
+
+wink <- augment(kclust, PCA_data2)
+
+feature_list2 <- c("PC1_name","PC2_name","PC3_name","PC4_name","PC5_name","PC6_name","PC7_name","PC8_name","PC9_name","PC10_name")
+
+wink %>%
+pivot_longer(all_of(feature_list2),names_to = "feature") %>%
+ggplot(aes(value, fill=.cluster))+
+geom_density(alpha=0.3)+
+facet_wrap(~feature)+
+theme_bw()
+
+wink %>% 
+  ggplot(aes(PC2_name, PC3_name, color = .cluster) )+
+  geom_point(alpha = .1)+
+  theme_bw()+
+  labs(title = "2 vs. 3")
+
+wink %>% 
+  ggplot(aes(PC2_name, PC5_name, color = .cluster) )+
+  geom_point(alpha = .1)+
+  theme_bw()+
+  labs(title = "2 vs. 3")
+
+wink %>% 
+  ggplot(aes(PC2_name, PC7_name, color = .cluster) )+
+  geom_point(alpha = .1)+
+  theme_bw()+
+  labs(title = "2 vs. 3")
+```
+# K means 3
+```{r}
+set.seed(500)
+# K means on dimensionality reduced data
+PCA_data2 <- FinalData %>% select(-incident_id)
+
+kclust <- kmeans(PCA_data2, centers = 3)
+
+wink <- augment(kclust, PCA_data2)
+
+feature_list2 <- c("PC1_name","PC2_name","PC3_name","PC4_name","PC5_name","PC6_name","PC7_name","PC8_name","PC9_name","PC10_name")
+
+wink %>%
+pivot_longer(all_of(feature_list2),names_to = "feature") %>%
+ggplot(aes(value, fill=.cluster))+
+geom_density(alpha=0.3)+
+facet_wrap(~feature)+
+theme_bw()
+
+wink %>% 
+  ggplot(aes(PC2_name, PC3_name, color = .cluster) )+
+  geom_point(alpha = .1)+
+  theme_bw()+
+  labs(title = "2 vs. 3")
+
+wink %>% 
+  ggplot(aes(PC2_name, PC5_name, color = .cluster) )+
+  geom_point(alpha = .1)+
+  theme_bw()+
+  labs(title = "2 vs. 5")
+
+wink %>% 
+  ggplot(aes(PC2_name, PC7_name, color = .cluster) )+
+  geom_point(alpha = .1)+
+  theme_bw()+
+  labs(title = "2 vs. 7")
+```
+# K means 10
+```{r}
+set.seed(500)
+# K means on dimensionality reduced data
+PCA_data2 <- FinalData %>% select(-incident_id)
+
+kclust <- kmeans(PCA_data2, centers = 10)
+
+wink <- augment(kclust, PCA_data2)
+
+feature_list2 <- c("PC1_name","PC2_name","PC3_name","PC4_name","PC5_name","PC6_name","PC7_name","PC8_name","PC9_name","PC10_name")
+
+wink %>%
+pivot_longer(all_of(feature_list2),names_to = "feature") %>%
+ggplot(aes(value, fill=.cluster))+
+geom_density(alpha=0.3)+
+facet_wrap(~feature)+
+theme_bw()
+
+wink %>% 
+  ggplot(aes(PC2_name, PC3_name, color = .cluster) )+
+  geom_point(alpha = .1)+
+  theme_bw()+
+  labs(title = "2 vs. 3")
+
+wink %>% 
+  ggplot(aes(PC2_name, PC5_name, color = .cluster) )+
+  geom_point(alpha = .1)+
+  theme_bw()+
+  labs(title = "2 vs. 5")
+
+wink %>% 
+  ggplot(aes(PC2_name, PC4_name, color = .cluster) )+
+  geom_point(alpha = .1)+
+  theme_bw()+
+  labs(title = "2 vs. 4")
+```
+# PC 2 and 3 appear to be my best features and 3 clusters seems to have really clean division
+# how can we define pc2
+# how can we define pc3: trespassers, people walking on foot, speeding. negative indication for car, data, packs
+
+ 
+```{r}
+#pc2
+top_pca_features %>% 
+  select(rowname, PC2, PC3) %>% 
+  ggplot(aes(PC2,reorder(rowname,PC2), fill = PC2))+
+  geom_col()
+
+#pc3
+top_pca_features %>% 
+  select(rowname, PC2, PC3) %>% 
+  ggplot(aes(PC3,reorder(rowname,PC3), fill = PC3))+
+  geom_col()
+```
+
+# how can we define cluster 1: trespassy, violent, assult
+# how can we define cluster 2: verbal agression, yelling, assult
+# how can we define cluster 3
+```{r}
+wink$id <- ds2$incident_id
+
+combined 
+
+ds2$group <- wink$.cluster
+
+ds2 %>% 
+  filter(group==3) %>% 
+  select(comments, group)
+
+
+
+```
+
