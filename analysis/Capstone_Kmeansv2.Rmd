@@ -21,7 +21,7 @@ library(broom)
 
 ```{r}
 # DATA PREPARATION
-ds2 <- read_csv("C:\\Users\\corey\\OneDrive\\Desktop\\01_Willamette U\\Semester 1\\Capstone\\trimet_complete.csv")
+ds2 <- read_csv('https://raw.githubusercontent.com/karolo89/capstone/main/data/trimet_complete.csv')
 
 ds2$subtype_desc <- as.factor(ds2$subtype_desc)
 ds2$direction <- as.factor(ds2$direction)
@@ -71,7 +71,7 @@ string_to_columns <- function(df, j = 500, stem=F){
 #PCA on top features
 
 ```{r, fig.width=7}
-# RUNNING THROUGH AN RF TO GET TOP 10 FEATURE IMPORTANTCE 
+# RUNNING THROUGH AN RF TO GET TOP 10 FEATURE IMPORTANCE 
 set.seed(500)
 
 ds6 <- string_to_columns(ds2)
@@ -131,7 +131,8 @@ biplot(pr_income, choices = c(2,3), cex = .5)
 # fviz_pca_biplot(pr_income, c )
 
 ```
-# Running K means on just the tokenized columsn showed very little desnsity differentiation for each of my feature columns. difficult to get any value. 
+
+# Running K means on just the tokenized columns showed very little density differentiation for each of my feature columns. difficult to get any value. 
 
 ```{r, fig.width = 10}
 # K Means
