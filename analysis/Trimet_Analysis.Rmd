@@ -230,6 +230,9 @@ ggplot(df_day_counts, aes(x = day, y = n, fill = color)) +
 
 
 ```
+day_
+
+
 
 Days are a little sporatic but it looks like earlier in the month and later in the months there are more incidents, first and last week of the month specifically.
 
