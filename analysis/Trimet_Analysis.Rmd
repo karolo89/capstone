@@ -628,6 +628,16 @@ People try to break into TVMs to steal tickets / money.
 df %>% filter(str_detect(subtype_desc,'TVM'))
 ```
 
+
+
+
+
+
+
+
+
+# WRANGLING LOCATION DATA 
+
 Using sf package to load TriMet transit center shapefile: 
 
 ```{r}
@@ -668,7 +678,7 @@ tri_county_tracts = bind_rows(mult_tracts,clack_tracts,wash_tracts)
 plot(tri_county_tracts)
 ```
 
-Plot of Trimet Transit Center Across 3 Counties 
+Plot of Trimet Transit Centers Across 3 Counties 
 ```{r}
 ggplot() + geom_sf(data = tri_county_tracts) + 
           geom_sf(data = shape, color = "dodgerblue", size = 5) + 
@@ -677,11 +687,10 @@ ggplot() + geom_sf(data = tri_county_tracts) +
           coord_sf(xlim=c(-123.1, -122.4), ylim = c(45.3,45.6)) 
 
 
-?geom_sf_text()
 ```
 Renaming transit center names according to shapefile:
 ```{r}
-#subsetting dataset with "
+#subsetting dataset with only transit centers 
 tc = df %>% filter(str_detect(location, "Tc")) 
 
 unique(tc$location)
@@ -724,7 +733,75 @@ shape = shape %>% mutate(location = name) %>% relocate(location) %>% select(-nam
 tc2 = tc2 %>% left_join(shape, by = "location")
 #Okay! We have now have 3,608 security incidents that have complete special data.
 
+#joining shape to original dataset 
 ```
+
+```{r}
+#first I need to change transit centers names in df 
+
+df = df %>% mutate(location = 
+                case_when(
+                  grepl("Rose",location) ~ "Rose Quarter Transit Center", 
+                  grepl("Beaverton",location) ~ "Beaverton Transit Center",
+                  grepl("Gateway",location) ~ "Gateway/NE 99th Ave Transit Center",
+                  grepl("Clack",location) ~ "Clackamas Town Center Transit Center",
+                  grepl("Sunset",location) ~ "Sunset Transit Center",
+                  grepl("Willow",location) ~ "Willow Creek/SW 185th Ave Transit Center",
+                  grepl("Gresham",location) ~ "Gresham Central Transit Center",
+                  grepl("Hillsboro",location) ~ "Hillsboro Central/SE 3rd Ave Transit Center",
+                  grepl("Lombard Tc",location) ~ "N Lombard Transit Center",
+                  grepl("Tigard",location) ~ "Tigard Transit Center",
+                  grepl("Hollywood",location) ~ "Hollywood/NE 42nd Ave Transit Center",
+                  grepl("Rose",location) ~ "Rose Quarter Transit Center",
+                  grepl("Sunset",location) ~ "Sunset Transit Center",
+                  TRUE ~ location)
+                )
+
+#now need to join spatial data to these 
+
+num_per_tc = df %>% filter(str_detect(location, "Transit Center")) %>% group_by(location) %>% count()  
+
+df2 = df %>% left_join(shape, by = "location") # ok this is weird, every row got geometry point shape data
+
+df2 = df2 %>% mutate(geometry = ifelse(str_detect(location, "Transit Center"), st_as_sf(geometry), NA)) #removing the duplicated shapefile point from geometry 
+
+
+
+
+
+
+#with transit centers now wrangled, what are the next big locations in the dataset ?  
+
+df %>% group_by(location) %>% count() %>% arrange(desc(n))
+
+```
+Elmonica / SW 170th Ave is a light rail station on the Max Blue line 
+
+
+```{r}
+df %>% filter(str_detect(location,"Elmonica"))
+
+#So there is the blue max station, and then the neighboring yard. Let's group these events together -- it's within the same geographic area. 
+
+df = df %>% mutate(location = ifelse(str_detect(location, "Elmonica"),"Elmonica/Sw 170th", location)) # okay now 552 incidents are in the Same elmonica 
+
+
+#now let's find the shapefile / coords for this location 
+
+shape2 %>% filter(str_detect(stop_name, "Elmonica")) # "Elmonica/SW 170th Ave MAX Station"
+
+#changing df location to match shapefile stop_name 
+
+df = df %>% mutate(location = ifelse(location == "Elmonica/Sw 170th","Elmonica/SW 170th Ave MAX Station", location))
+
+# subsetting elmonica spatial data 
+
+elmo = shape2 %>% filter(str_detect(stop_name, "Elmonica")) %>% filter(stop_seq == 1550)
+
+```
+
+
+
 ```{r}
 tc_2022_num_incidents = tc2 %>% filter(year == 2022) %>% 
   group_by(location) %>% count() %>% 
@@ -771,7 +848,7 @@ routes = ggplot() + geom_sf(data = tri_county_tracts) +
           coord_sf(xlim=c(-123.1, -122.4), ylim = c(45.3,45.6)) + 
           theme(legend.position = "none")
 
-ggplotly(routes)
+routes
 ```
 
 
