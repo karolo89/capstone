@@ -30,7 +30,9 @@ library(readxl)
 df <- read_csv('https://raw.githubusercontent.com/karolo89/capstone/main/data/trimet_complete.csv')
 summary(df)
 
+unique(df$subtype_desc)
 
+df %>% group_by(subtype_desc) %>% count() %>% arrange(desc(n))
 ```
 
 ## Examining data with subtype as "Other": 
@@ -725,7 +727,20 @@ tc_coords = st_transform(shape,"+proj=longlat +ellps=WGS84 +datum=WGS84") %>% st
 shape = bind_cols(shape, tc_coords) %>% rename(lat = Y, lon = X)
 ```
 
+converting shapefile to coords for routes_and_stops shapefile 
+```{r}
+rs_coords = st_transform(shape2,"+proj=longlat +ellps=WGS84 +datum=WGS84") %>%  st_coordinates()
 
+rs_shape = bind_cols(shape2, rs_coords) %>% rename(lat = Y, lon = X)
+rs_shape = rs_shape %>% mutate(location = stop_name) %>% relocate(location) %>% select(-stop_name)
+
+```
+
+The process so far is: 
+Change location name in `df` to match the location name in shapefiles. Join shapefile data with `df` data on `location` key.
+
+
+This is a test, subsetting df to grab only transit centers: 
 ```{r}
 #renaming name to location so that they share col name to join on 
 shape = shape %>% mutate(location = name) %>% relocate(location) %>% select(-name) # for some reason rename() was throwing an error, so this is a work-around to change name col to location for joining
@@ -764,20 +779,14 @@ num_per_tc = df %>% filter(str_detect(location, "Transit Center")) %>% group_by(
 df2 = df %>% left_join(shape, by = "location") # ok this is weird, every row got geometry point shape data
 
 df2 = df2 %>% mutate(geometry = ifelse(str_detect(location, "Transit Center"), st_as_sf(geometry), NA)) #removing the duplicated shapefile point from geometry 
-
-
-
-
-
-
-#with transit centers now wrangled, what are the next big locations in the dataset ?  
-
-df %>% group_by(location) %>% count() %>% arrange(desc(n))
-
 ```
+
+With transit centers now wrangled, what are the next big locations in the dataset ? 
+```{r}
+df %>% group_by(location) %>% count() %>% arrange(desc(n))
+```
+
 Elmonica / SW 170th Ave is a light rail station on the Max Blue line 
-
-
 ```{r}
 df %>% filter(str_detect(location,"Elmonica"))
 
@@ -788,15 +797,19 @@ df = df %>% mutate(location = ifelse(str_detect(location, "Elmonica"),"Elmonica/
 
 #now let's find the shapefile / coords for this location 
 
-shape2 %>% filter(str_detect(stop_name, "Elmonica")) # "Elmonica/SW 170th Ave MAX Station"
+rs_shape %>% filter(str_detect(stop_name, "Elmonica")) # "Elmonica/SW 170th Ave MAX Station"
+
 
 #changing df location to match shapefile stop_name 
 
 df = df %>% mutate(location = ifelse(location == "Elmonica/Sw 170th","Elmonica/SW 170th Ave MAX Station", location))
 
 # subsetting elmonica spatial data 
+elmo = rs_shape %>% filter(str_detect(stop_name, "Elmonica")) %>% filter(stop_seq == 1550) %>% mutate(location = 'stop_name')
 
-elmo = shape2 %>% filter(str_detect(stop_name, "Elmonica")) %>% filter(stop_seq == 1550)
+df %>% filter(location == "Elmonica/SW 170th Ave MAX Station")
+
+df %>% left_join(elmo, by = "location")
 
 ```
 
@@ -840,6 +853,8 @@ shape2 = read_sf(dsn = '/Users/chanks/workspace/capstone/data/shapefiles/tm_rout
 
 head(shape2)
 ```
+
+
 ```{r}
 routes = ggplot() + geom_sf(data = tri_county_tracts) + 
           geom_sf(data = shape2, aes(color = factor(rte)), alpha = .5, size = 1) + 
