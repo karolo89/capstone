@@ -867,3 +867,102 @@ routes
 ```
 
 
+#######
+
+New Data file from Trimet: `trimet_2010_2023.csv` 
+
+Rexamining date + time trends using larger dataset 
+```{r}
+library(lubridate)
+
+df2 = read_csv('/Users/chanks/workspace/capstone/data/trimet_2010_2023.csv')
+
+unique(df2$INCIDENT_SUBTYPE_CODE_LIST) # MUSHROOM ?? 
+
+df2 = df2 %>% mutate(date = as.POSIXct(date, format="%m/%d/%Y"))
+
+df2 = df2 %>% mutate(year = year(date), 
+                     month = month(date, label = TRUE), 
+                     day = day(date), 
+                     wday = wday(date, label = TRUE), 
+                     hour = hour(time))
+
+# Now calculate counts and average for each year
+df_year_counts2 <- df2 %>%
+  count(year) %>%
+  mutate(avg = mean(n),
+         color = ifelse(n > avg, "Above Average", "Below Average"))
+
+ggplot(df_year_counts2, aes(x = year, y = n, fill = color)) + 
+  geom_bar(stat = "identity", show.legend = FALSE) +
+  geom_hline(aes(yintercept = avg), linetype = "dashed", color = "black") +
+  scale_fill_manual(values = c("Above Average" = "#FF7F7F", "Below Average" = "#7F7FFF")) +
+  theme_minimal() +
+  labs(x = "Year", y = "Count", fill = "", title = "Number of Security Incidents Per Year")
+
+
+# Now calculate counts and average for each month
+df_month_counts2 <- df2 %>%
+  count(month) %>%
+  mutate(avg = mean(n),
+         color = ifelse(n > avg, "Above Average", "Below Average"))
+
+ggplot(df_month_counts2, aes(x = month, y = n, fill = color)) + 
+  geom_bar(stat = "identity", show.legend = FALSE) +
+  geom_hline(aes(yintercept = avg), linetype = "dashed", color = "black") +
+  scale_fill_manual(values = c("Above Average" = "#FF7F7F", "Below Average" = "#7F7FFF")) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5)) +
+  labs(y = "Count", fill = "")
+
+# Now calculate counts and average for each day
+df_day_counts2 <- df2 %>%
+  count(day) %>%
+  mutate(avg = mean(n),
+         color = ifelse(n > avg, "Above Average", "Below Average"))
+
+ggplot(df_day_counts2, aes(x = day, y = n, fill = color)) + 
+  geom_bar(stat = "identity", show.legend = FALSE) +
+  geom_hline(aes(yintercept = avg), linetype = "dashed", color = "black") +
+  scale_fill_manual(values = c("Above Average" = "#FF7F7F", "Below Average" = "#7F7FFF")) +
+  theme_minimal() +
+  labs(x = "Day of Month", y = "Count", fill = "")
+
+# Now calculate counts and average for each hour
+df_hour_counts2 <- df2 %>%
+  count(hour) %>%
+  mutate(avg = mean(n),
+         color = ifelse(n > avg, "Above Average", "Below Average"))
+
+
+# Plot hourly counts
+ggplot(df_hour_counts2, aes(x = hour, y = n, fill = color)) + 
+  geom_bar(stat = "identity", show.legend = FALSE) +
+  geom_hline(aes(yintercept = avg), linetype = "dashed", color = "black") +
+  scale_fill_manual(values = c("Above Average" = "#FF7F7F", "Below Average" = "#7F7FFF")) +
+  theme_minimal() +
+  labs(x = "Hour of the Day", y = "Count", fill = "")
+
+```
+
+```{r}
+df2 = df2 %>% rename_all(funs(tolower(.))) # I like lower case columns 
+
+df2 = df2 %>% select(-incident_begin_date,-division_code, -x_coordinate,-y_coordinate,-loc_x,-loc_y) # removing non-pertinent columns 
+
+#looks like we have some duplicate incidents 
+
+df2 %>% group_by(comments) %>% count() %>% arrange(desc(n))
+df2= df2[!duplicated(df2$incident_id),] #keeping only 1 incident per incident_id 
+
+#quick removal of some unwanted text in comments 
+patterns = c("<Notification>","\r","\n")
+df2 = df2 %>% mutate(comments = gsub(paste(patterns, collapse = "|"), "", comments))
+
+write_csv(df2, file = '/Users/chanks/workspace/capstone/data/trimet_2010_2023_v2.csv')
+
+unique(df2$incident_type_code_list)
+
+df2 %>% group_by(incident_subtype_code_list) %>% count()
+```
+

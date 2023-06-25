@@ -1,0 +1,160 @@
+---
+title: "Trimet Security Analysis"
+author: Karol Orozco, Corey Cassell, Justus Eaglesmith, Charles Hanks, & CorDarryl Hall
+output: html_document
+date: "2023-06-25"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(lubridate)
+library(gridExtra)
+library(forcats)
+library(stringr)
+library(tm)
+library(SnowballC)
+library(RColorBrewer)
+library(tigris)
+library(sf)
+```
+
+## DATA CLEANING
+
+```{r}
+#this is the raw data provided by trimet, through Karol, on Jun 24 2023 
+df = read_csv('https://raw.githubusercontent.com/karolo89/capstone/main/data/trimet_2010_2023.csv')
+skim(df)     
+
+df = df %>% rename_all(funs(tolower(.))) # I like lower case columns 
+df = df %>% select(-incident_begin_date,-division_code, -x_coordinate,-y_coordinate,-loc_x,-loc_y) # removing non-pertinent columns 
+
+#adding date + time columns:
+df = df %>% mutate(date = as.POSIXct(date, format="%m/%d/%Y"))
+
+df = df %>% mutate(year = year(date), 
+                     month = month(date, label = TRUE), 
+                     day = day(date), 
+                     wday = wday(date, label = TRUE), 
+                     hour = hour(time))
+
+#looks like we have some duplicate incidents 
+df= df[!duplicated(df$incident_id),]
+
+#quick scrub of some unwanted tags in comments 
+patterns = c("<Notification>","\r","\n")
+df = df %>% mutate(comments = gsub(paste(patterns, collapse = "|"), "", comments))
+
+#looks like several columns are incomplete, may have to make some sacrifices for the sake of clean, workable data. 
+#For example, I think for our purposes we can drop garage, primary_vehicle_flag, and train.
+
+df = df %>% select(-garage, -primary_vehicle_flag, -train)
+
+df %>% filter(is.na(route_number)) # note that 18,422 of the incidents do not have a route number assigned, this may be consideration later in analysis when drilling down to incidents per route 
+
+# every incident has a location id! This is good. 
+df %>% filter(!is.na(location_id)) 
+
+skim(df) #also note: 524 rows are missing comments, 4149 rows are missing location names (this coudl be rectified as we have location_id)
+```
+
+## LOCATION DATA ANALYSIS 
+```{r}
+#loading trimet's 'routes & stops' shapfiles, courtesy of Trimet's developer resources: <https://developer.trimet.org/>
+shape_rs = read_sf(dsn = '/Users/chanks/workspace/capstone/data/shapefiles/tm_route_stops', 
+                layer = 'tm_route_stops') #loading routes and stops shapefile data 
+
+# confirming that shapefile `stop_id` is the same as security dataset's `location_id` 
+shape_rs %>% filter(str_detect(stop_name,"Hollywood")) # Hollywood TC id is 10871
+
+df %>% filter(location_id == 10871) #there are multiple stop_ids per transit center
+```
+
+```{r}
+
+```
+
+Adding WGS84 coordinates to routes and stops shapefile 
+```{r}
+coords_rs = st_transform(shape_rs,"+proj=longlat +ellps=WGS84 +datum=WGS84") %>%  st_coordinates()
+
+shape_rs = bind_cols(shape_rs, coords_rs) %>% rename(lat = Y, lon = X)
+# I have confirmed on https://www.gps-coordinates.net/ that these lat + lon coords correspond to stop / intersection 
+
+length(unique(shape_rs$stop_id)) #6430 distinct stop_ids 
+length(shape_rs$stop_id) # 8539 total stop_ids listed, this is likely because multiple routes share the same stop
+```
+Prepping route and stops shapefile to join 
+```{r}
+#changing stop_id to location_id so that dataframes may join on common key (rename() throws an error that I haven't resolved)
+shape_rs = shape_rs %>% mutate(location_id = stop_id) %>% select(-stop_id) %>% relocate(location_id, .after = stop_name)
+
+#selecting only the relevant columns to join: 
+shape_rs = shape_rs %>% select(stop_name, location_id, zipcode, frequent, geometry, lon, lat) 
+
+#we only want one location_id (formerly stop_id) in this shape file to avoid a many-to-many join ("For stops served by multiple lines there are multiple records in this dataset.")
+shape_rs_distinct = shape_rs %>% distinct(location_id, .keep_all = TRUE)
+
+```
+
+
+```{r}
+skim(df)
+
+df2 = df %>% left_join(shape_rs_distinct, by = "location_id")
+
+df2[1,1]
+
+df2 %>% group_by(year) %>% summarize(how_many_missing = sum(is.na(lon))) # it looks like our 
+
+df2 %>% filter(is.na(lon)) %>% group_by(location_id) %>% count() %>% arrange(desc(n))
+
+df2 %>% filter(location_id == 10664) 
+
+shape_rs_distinct %>% filter(str_detect(stop_name,"Gateway")) #10864
+
+skim(test)
+shape_rs_distinct %>% filter(location_id == 10670)
+```
+
+Joining `shape_rs` to `df` 
+```{r}
+
+dim(shape_rs_distinct)
+left_join(df, shape_rs, by = c("location_id" = "location_id")) %>% arrange()
+
+df %>% filter(location_id == 0) # 4,149 incidents do not have location id, is this across all years? 
+
+df %>% filter(location_id == 0) %>% group_by(year) %>% count() # I think I'll drop these indidents in the name of working with complete data 
+
+
+
+df2 = df %>% inner_join(shape_rs_distinct, by = "location_id") %>% drop_na()
+
+skim(df2)
+
+df2 %>% group_by(year) %>% count()
+```
+What is route # 0 ? 
+```{r}
+df %>% filter(route_number == 0)
+df %>% filter(is.na(route_number))
+```
+
+
+
+## TEMPORAL DATA ANALYSIS 
+```{r}
+
+```
+
+
+
+## TEXT DATA ANALYSIS 
+```{r}
+
+```
+
