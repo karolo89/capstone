@@ -20,12 +20,13 @@ library(SnowballC)
 library(RColorBrewer)
 library(tigris)
 library(sf)
+library(skimr)
 ```
 
 ## DATA CLEANING
 
 ```{r}
-#this is the raw data provided by trimet, through Karol, on Jun 24 2023 
+#this is the raw data provided by TriMet, through Karol, on Jun 24 2023 
 df = read_csv('https://raw.githubusercontent.com/karolo89/capstone/main/data/trimet_2010_2023.csv')
 skim(df)     
 
@@ -59,6 +60,7 @@ df %>% filter(is.na(route_number)) # note that 18,422 of the incidents do not ha
 df %>% filter(!is.na(location_id)) 
 
 skim(df) #also note: 524 rows are missing comments, 4149 rows are missing location names (this coudl be rectified as we have location_id)
+
 ```
 
 ## LOCATION DATA ANALYSIS 
@@ -86,6 +88,12 @@ shape_rs = bind_cols(shape_rs, coords_rs) %>% rename(lat = Y, lon = X)
 
 length(unique(shape_rs$stop_id)) #6430 distinct stop_ids 
 length(shape_rs$stop_id) # 8539 total stop_ids listed, this is likely because multiple routes share the same stop
+
+shape_rs %>% group_by(stop_id) %>% count() %>% arrange(desc(n))
+# ther are 21 routes that use stop id 13248
+
+shape_rs %>% filter(stop_id == 13248)
+
 ```
 Prepping route and stops shapefile to join 
 ```{r}
@@ -98,27 +106,271 @@ shape_rs = shape_rs %>% select(stop_name, location_id, zipcode, frequent, geomet
 #we only want one location_id (formerly stop_id) in this shape file to avoid a many-to-many join ("For stops served by multiple lines there are multiple records in this dataset.")
 shape_rs_distinct = shape_rs %>% distinct(location_id, .keep_all = TRUE)
 
+shape_rs_distinct %>% filter(location_id == 13248) # confirming that this clackamas tc stop has only one row
+
+```
+
+JOIN
+```{r}
+df2 = df %>% left_join(shape_rs_distinct, by = "location_id")
+
 ```
 
 
+The routes & stops shapefile is missing some locations....I will hunt these down.
 ```{r}
-skim(df)
+#for example, this gateway transit stop 
+df2 %>% filter(location_id == 10664) #this stop_id does not exist according to trimet.org - change this id to 8196
+df2 %>% filter(location_id == 8196) #this one is missing too.... 
 
-df2 = df %>% left_join(shape_rs_distinct, by = "location_id")
+shape_rs_distinct %>% filter(str_detect(stop_name,"Gateway")) #10864
+#we could change all the location 
 
-df2[1,1]
+df2 %>% filter(str_detect(location, "Gateway")) %>% group_by(location) %>% count() %>% arrange(desc(n)) #all but one of these location names is Gateway TC
 
-df2 %>% group_by(year) %>% summarize(how_many_missing = sum(is.na(lon))) # it looks like our 
+#changing location_id of Gateway TC to 10864 in df
+df = df %>% mutate(location_id = ifelse(str_detect(location, "Gateway") & !str_detect(location, "[Tt]errace"),10864, location_id)) 
+
 
 df2 %>% filter(is.na(lon)) %>% group_by(location_id) %>% count() %>% arrange(desc(n))
 
-df2 %>% filter(location_id == 10664) 
-
-shape_rs_distinct %>% filter(str_detect(stop_name,"Gateway")) #10864
 
 skim(test)
 shape_rs_distinct %>% filter(location_id == 10670)
 ```
+
+before I go down the rabbit hole of manually matching location_id, perhaps there is another shapefile with these locations. Trimet.org does not recognize this as public-serving stops 
+```{r}
+shape_rail_stops = read_sf(dsn = '/Users/chanks/workspace/capstone/data/shapefiles/tm_rail_stops', 
+                layer = 'tm_rail_stops') 
+
+coords_rail_stops = st_transform(shape_rail_stops,"+proj=longlat +ellps=WGS84 +datum=WGS84") %>%  st_coordinates()
+
+shape_rail_stops = bind_cols(shape_rail_stops, coords_rail_stops) %>% rename(lat = Y, lon = X)
+
+#nope, this does not have the data I want 
+
+
+shape_parkride = read_sf(dsn = '/Users/chanks/workspace/capstone/data/shapefiles/tm_parkride', 
+                layer = 'tm_parkride') 
+
+coords_parkride = st_transform(shape_parkride,"+proj=longlat +ellps=WGS84 +datum=WGS84") %>%  st_coordinates()
+
+shape_parkride = bind_cols(shape_parkride, coords_parkride) %>% rename(lat = Y, lon = X)
+
+#nice to have, but this does not have location_id 
+
+shape = read_sf(dsn = '/Users/chanks/workspace/capstone/data/shapefiles/tm_tran_cen', 
+                layer = 'tm_tran_cen')
+```
+
+Looks like I need to roll up the sleeves and assign an active location_id to as many of these missing rows as possible: 
+```{r}
+#let's start with location_ids with at least 100 incidents 
+missing_df2 = df2 %>% filter(is.na(lon)) %>% group_by(location_id) %>% count() %>% arrange(desc(n)) %>% filter(n > 100)
+
+#location_id = 0 
+df2 %>% filter(location_id == 0) #4,149 of these simply do not have a location...it may be fruitless to attempt to hunt for a place to pin these on a map :/ it would be guessing...
+
+#location_id = 10665
+df2 %>% filter(location_id == 10665) %>% group_by(location) %>% count() # Gresham TC ! #active id is 10857
+df = df %>% mutate(location_id = ifelse(location_id == 10665,10857, location_id))
+
+#location_id = 10659
+df2 %>% filter(location_id == 10659) #Beaverton TC 
+shape_rs %>% filter(str_detect(stop_name, "Beaverton")) #9654
+df = df %>% mutate(location_id = ifelse(location_id == 10659,9654, location_id))
+
+#10664
+df2 %>% filter(location_id == 10664) #Gateway TC
+df = df %>% mutate(location_id = ifelse(location_id == 10664,10857, location_id))
+
+#11351
+df2 %>% filter(location_id == 11351) #CTC 
+shape_rs %>% filter(str_detect(stop_name, "Clackamas")) #13248
+df = df %>% mutate(location_id = ifelse(location_id == 11351,13248, location_id))
+
+#10672
+df2 %>% filter(location_id == 10672) %>% select(location)
+shape_rs %>% filter(str_detect(stop_name, "Tigard ")) #8210
+df = df %>% mutate(location_id = ifelse(location_id == 10672,8210, location_id))
+
+#10660
+df2 %>% filter(location_id == 10660) %>% select(location)
+shape_rs %>% filter(str_detect(stop_name, "Hollywood")) %>% select(stop_name, location_id)
+
+df = clean_data(10660,10872)
+
+clean_data = function(old,new){
+  df = df %>% mutate(location_id = ifelse(location_id == old,new, location_id)) #trying to make life easier by automating this part of find and replace 
+  return(df)
+}
+
+#8358
+df2 %>% filter(location_id == 8358) %>% select(location)
+shape_rs %>% filter(str_detect(stop_name, "Cleveland Ave MAX Station")) %>% select(stop_name, location_id)
+df = clean_data(8358,8359)
+
+#11431
+df2 %>% filter(location_id == 11431) %>% select(location) %>% slice_head(n = 1) %>% pull() 
+shape_rs %>% filter(str_detect(stop_name, "Oregon City")) %>% select(stop_name, location_id) # 8760
+df = clean_data(11431,8760)
+
+#4392
+df2 %>% filter(location_id == 4392) %>% select(location) %>% slice_head(n = 1) %>% pull()
+shape_rs %>% filter(str_detect(stop_name, "Parkrose")) %>% select(stop_name, location_id) # 10856
+df = clean_data(4392,10856)
+
+the_rest = missing_df2$location_id[11:28]
+
+the_rest_names = for (i in the_rest){
+  y = df2 %>% filter(location_id == i) %>% select(location) %>% slice_head(n = 1) %>% pull()
+  return(y)
+}
+
+the_rest_names <- map(the_rest, ~ df2 %>% filter(location_id == .x) %>% select(location) %>% slice_head(n = 1) %>% pull())
+
+#9847
+df2 %>% filter(location_id == 9847) %>% select(location) %>% slice_head(n = 1) %>% pull() 
+shape_rs %>% filter(str_detect(stop_name, "Hatfield")) %>% select(stop_name, location_id) 
+
+df = clean_data(9847,9848)
+
+#11919
+df2 %>% filter(location_id == 11919) %>% select(location) %>% slice_head(n = 1) %>% pull()
+shape_rs %>% filter(str_detect(stop_name, "Parkrose")) %>% select(stop_name, location_id) 
+
+df = clean_data(11919,10856)
+
+
+#11517 
+df2 %>% filter(location_id == 11517) %>% select(location) %>% slice_head(n = 1) %>% pull()
+shape_rs %>% filter(str_detect(stop_name, "Expo Center")) %>% select(stop_name, location_id)
+
+df = clean_data(11517,11498)
+
+#10670 
+df2 %>% filter(location_id == 10670) %>% select(location) %>% slice_head(n = 1) %>% pull()
+shape_rs %>% filter(str_detect(stop_name, "Rose Quarter ")) %>% select(stop_name, location_id) 
+
+df = clean_data(10670,11817)
+
+#13719 
+df2 %>% filter(location_id == 13719) %>% select(location) %>% slice_head(n = 1) %>% pull()
+shape_rs %>% filter(str_detect(stop_name, "Park Ave MAX")) %>% select(stop_name, location_id) 
+
+
+df = clean_data(13719,13720)
+
+#10666 
+df2 %>% filter(location_id == 10666) %>% select(location) %>% slice_head(n = 1) %>% pull()
+shape_rs %>% filter(str_detect(stop_name, "Hillsboro")) %>% select(stop_name, location_id) 
+
+df = clean_data(10666,9954)
+#11560  
+df2 %>% filter(location_id == 11560) %>% select(location) %>% slice_head(n = 1) %>% pull()
+shape_rs %>% filter(str_detect(stop_name, "Beaverton")) %>% select(stop_name, location_id) 
+
+df = clean_data(11560,9654)
+
+
+
+#9373 
+
+df2 %>% filter(location_id == 9373) %>% select(location) %>% slice_head(n = 1) %>% pull() 
+shape_rs %>% filter(str_detect(stop_name, "Jantzen Beach")) %>% select(stop_name, location_id) 
+
+df = clean_data(9373,1026)
+
+
+#6549 
+df2 %>% filter(location_id == 6549) %>% select(location) %>% slice_head(n = 1) %>% pull() 
+shape_rs %>% filter(str_detect(stop_name, "Holladay")) %>% select(stop_name, location_id) #13th not 11th but close 
+
+df = clean_data(6549,8513)
+
+#13131 
+df2 %>% filter(location_id == 13131) %>% select(location) %>% slice_head(n = 1) %>% pull()
+shape_rs %>% filter(str_detect(stop_name, "Clackamas Town Center")) %>% select(stop_name, location_id) 
+df = clean_data(13131,13248)
+
+
+#11632 
+df2 %>% filter(location_id == 11632) %>% select(location) %>% slice_head(n = 1) %>% pull()
+shape_rs %>% filter(str_detect(stop_name, "Gateway")) %>% select(stop_name, location_id) 
+df = clean_data(11632,10864)
+
+
+#12658
+df2 %>% filter(location_id == 12658) %>% select(location) %>% slice_head(n = 1) %>% pull()
+shape_rs %>% filter(str_detect(stop_name, "& Foster")) %>% select(stop_name, location_id) 
+
+df = clean_data(12658,8134)
+
+
+#10671 
+df2 %>% filter(location_id == 10671) %>% select(location) %>% slice_head(n = 1) %>% pull()
+shape_rs %>% filter(str_detect(stop_name, "Sunset")) %>% select(stop_name, location_id) 
+
+df = clean_data(10671,9975)
+
+#12452 
+df2 %>% filter(location_id == 12452) %>% select(location) %>% slice_head(n = 1) %>% pull()
+shape_rs %>% filter(str_detect(stop_name, "Ruby")) %>% select(stop_name, location_id) 
+
+df = clean_data(12452,8355)
+#13140 
+df2 %>% filter(location_id == 13140) %>% select(location) %>% slice_head(n = 1) %>% pull()
+shape_rs %>% filter(str_detect(stop_name, "Jackson")) %>% select(stop_name, location_id) 
+df = clean_data(13140,5028)
+#13428 
+df2 %>% filter(location_id == 13428) %>% select(location) %>% slice_head(n = 1) %>% pull()
+shape_rs %>% filter(str_detect(stop_name, "Clack")) %>% select(stop_name, location_id) 
+df = clean_data(13428,13248)
+
+#12740 
+df2 %>% filter(location_id == 12740) %>% select(location) %>% slice_head(n = 1) %>% pull()
+shape_rs %>% filter(str_detect(stop_name, "Clack")) %>% select(stop_name, location_id) 
+df = clean_data(12740,13248)
+#10661
+df2 %>% filter(location_id == 10661) %>% select(location) %>% slice_head(n = 1) %>% pull()
+shape_rs %>% filter(str_detect(stop_name, "Barbur")) %>% select(stop_name, location_id)
+df = clean_data(10661,8213)
+
+
+```
+
+
+JOIN AGAIN 
+```{r}
+df2 = df %>% left_join(shape_rs_distinct, by = "location_id")
+
+missing_per_year = df2 %>% filter(is.na(lon)) %>% group_by(year) %>% count()
+
+total_per_year  = df2 %>% group_by(year) %>% count() 
+
+missing_per_year %>% inner_join(total_per_year, by = "year") %>% mutate(perc_missing = n.x / n.y) # we have between 13% and 29% of incidents missing the right location data. 
+
+#what if we take out the location_id = 0: 
+missing_per_year_no_0 = df2 %>% filter(location_id != 0) %>% filter(is.na(lon)) %>% group_by(year) %>% count()
+total_per_year_no_0  = df2 %>% filter(location_id != 0) %>% group_by(year) %>% count() 
+missing_per_year_no_0 %>% inner_join(total_per_year_no_0, by = "year") %>% mutate(perc_missing = n.x / n.y) #I feel slightly better about 10-20 % removal of data across all years. 
+
+df2 = df2 %>% filter(location_id != 0) %>% filter(!is.na(lon))
+
+#df2 is now 47,932 rows long 
+
+df2 %>% group_by(year) %>% count() %>% ggplot(aes(x = year, y = n)) + geom_col() # it still follows the same trend as the original ds. 
+
+skim(df2)
+#the cols with NA are comments (427) and route (13210) - not every incident could necessarily be associated with a route, since some incidents happen not on car/train but on trimet property. We can always remove those later. For now I will use this subsetted data to gain insight upon where in the trimet system events happen. 
+
+df2
+
+```
+
+
+
 
 Joining `shape_rs` to `df` 
 ```{r}
