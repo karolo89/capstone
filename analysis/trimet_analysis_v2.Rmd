@@ -372,32 +372,6 @@ df2
 
 
 
-Joining `shape_rs` to `df` 
-```{r}
-
-dim(shape_rs_distinct)
-left_join(df, shape_rs, by = c("location_id" = "location_id")) %>% arrange()
-
-df %>% filter(location_id == 0) # 4,149 incidents do not have location id, is this across all years? 
-
-df %>% filter(location_id == 0) %>% group_by(year) %>% count() # I think I'll drop these indidents in the name of working with complete data 
-
-
-
-df2 = df %>% inner_join(shape_rs_distinct, by = "location_id") %>% drop_na()
-
-skim(df2)
-
-df2 %>% group_by(year) %>% count()
-```
-What is route # 0 ? 
-```{r}
-df %>% filter(route_number == 0)
-df %>% filter(is.na(route_number))
-```
-
-
-
 ## TEMPORAL DATA ANALYSIS 
 ```{r}
 
