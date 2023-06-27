@@ -75,24 +75,37 @@ shape_rs %>% filter(str_detect(stop_name,"Hollywood")) # Hollywood TC id is 1087
 df %>% filter(location_id == 10871) #there are multiple stop_ids per transit center
 ```
 
+Preparing tract data
 ```{r}
+library(tigris)
+options(tigris_use_cache = TRUE)
 
+this.year = 2020
+?tracts()
+mult_tracts = tracts(state = 'OR', county = "Multnomah", cb = T, year = this.year)
+clack_tracts = tracts(state = 'OR', county = "Clackamas", cb = T, year = this.year)
+wash_tracts = tracts(state = 'OR', county = "Washington", cb = T, year = this.year)
+
+tri_county_tracts = bind_rows(mult_tracts,clack_tracts,wash_tracts)
+
+plot(tri_county_tracts)
 ```
 
 Adding WGS84 coordinates to routes and stops shapefile 
 ```{r}
 coords_rs = st_transform(shape_rs,"+proj=longlat +ellps=WGS84 +datum=WGS84") %>%  st_coordinates()
 
-shape_rs = bind_cols(shape_rs, coords_rs) %>% rename(lat = Y, lon = X)
+shape_rs = bind_cols(shape_rs, coords_rs) %>% mutate(lat = Y, lon = X) %>% select(-Y,-X) #rename(lat = Y, lon = X)
 # I have confirmed on https://www.gps-coordinates.net/ that these lat + lon coords correspond to stop / intersection 
 
 length(unique(shape_rs$stop_id)) #6430 distinct stop_ids 
 length(shape_rs$stop_id) # 8539 total stop_ids listed, this is likely because multiple routes share the same stop
 
-shape_rs %>% group_by(stop_id) %>% count() %>% arrange(desc(n))
+#shape_rs %>% group_by(stop_id) %>% count() %>% arrange(desc(n))
 # ther are 21 routes that use stop id 13248
 
-shape_rs %>% filter(stop_id == 13248)
+shape_rs = st_transform(shape_rs, crs = st_crs(tri_county_tracts)) #joining tract information to shape_rs (for mapping later)
+shape_rs = st_join(shape_rs,tri_county_tracts)
 
 ```
 Prepping route and stops shapefile to join 
@@ -101,7 +114,7 @@ Prepping route and stops shapefile to join
 shape_rs = shape_rs %>% mutate(location_id = stop_id) %>% select(-stop_id) %>% relocate(location_id, .after = stop_name)
 
 #selecting only the relevant columns to join: 
-shape_rs = shape_rs %>% select(stop_name, location_id, zipcode, frequent, geometry, lon, lat) 
+#shape_rs = shape_rs %>% select(stop_name, location_id, zipcode, frequent, geometry, lon, lat) 
 
 #we only want one location_id (formerly stop_id) in this shape file to avoid a many-to-many join ("For stops served by multiple lines there are multiple records in this dataset.")
 shape_rs_distinct = shape_rs %>% distinct(location_id, .keep_all = TRUE)
@@ -165,7 +178,17 @@ shape = read_sf(dsn = '/Users/chanks/workspace/capstone/data/shapefiles/tm_tran_
 ```
 
 Looks like I need to roll up the sleeves and assign an active location_id to as many of these missing rows as possible: 
+
+*note - this data cleaning process could be automated with find/replace function. I did this manually for at least stops with 100 hits or more to ensure that their new location_id was a legitimate and active stop in transit system. To visit. * 
+
 ```{r}
+#one component of function to automate this process: 
+clean_data = function(old,new){
+  df = df %>% mutate(location_id = ifelse(location_id == old,new, location_id)) #trying to make life easier by automating this part of find and replace 
+  return(df)
+}
+
+
 #let's start with location_ids with at least 100 incidents 
 missing_df2 = df2 %>% filter(is.na(lon)) %>% group_by(location_id) %>% count() %>% arrange(desc(n)) %>% filter(n > 100)
 
@@ -201,10 +224,7 @@ shape_rs %>% filter(str_detect(stop_name, "Hollywood")) %>% select(stop_name, lo
 
 df = clean_data(10660,10872)
 
-clean_data = function(old,new){
-  df = df %>% mutate(location_id = ifelse(location_id == old,new, location_id)) #trying to make life easier by automating this part of find and replace 
-  return(df)
-}
+
 
 #8358
 df2 %>% filter(location_id == 8358) %>% select(location)
@@ -358,9 +378,6 @@ missing_per_year_no_0 %>% inner_join(total_per_year_no_0, by = "year") %>% mutat
 
 df2 = df2 %>% filter(location_id != 0) %>% filter(!is.na(lon))
 
-#df2 is now 47,932 rows long 
-
-df2 %>% group_by(year) %>% count() %>% ggplot(aes(x = year, y = n)) + geom_col() # it still follows the same trend as the original ds. 
 
 skim(df2)
 #the cols with NA are comments (427) and route (13210) - not every incident could necessarily be associated with a route, since some incidents happen not on car/train but on trimet property. We can always remove those later. For now I will use this subsetted data to gain insight upon where in the trimet system events happen. 
@@ -368,6 +385,38 @@ skim(df2)
 df2
 
 ```
+
+Examining cleaned up dataset, `df2`: 
+```{r}
+df2 %>% group_by(year) %>% count() %>% ggplot(aes(x = year, y = n)) + geom_col()  # it still follows the same trend as the original ds. 
+
+#which zip code has the most incidents? 
+df2 %>% group_by(zipcode) %>% count() %>% arrange(desc(n)) # 97220 - that is 82nd to 122nd, North of Burnside up to the Columbia
+
+#which zip code has the least incidents
+df2 %>% group_by(zipcode) %>% count() %>% arrange(n) # 97022 - Clackamas county, Eagle Creek 
+
+```
+
+
+```{r}
+ggplot() +
+  geom_sf(data = tri_county_tracts) +
+  geom_point(data = df2, aes(x = lon, y = lat), color = 'red', alpha = .05, size =.5) + 
+  coord_sf(xlim = c(-123.1, -122.4), ylim = c(45.3, 45.6))
+ 
+```
+Mapping by tract 
+
+```{r}
+df2
+```
+
+
+
+
+
+
 
 
 
