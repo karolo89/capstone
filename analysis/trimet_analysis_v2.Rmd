@@ -466,10 +466,11 @@ ggplot(incident_per_tract) +
   coord_sf(xlim = c(-123.1, -122.4), ylim = c(45.3, 45.7)) + 
   labs(title = "Trimet Security Incident Hotspots, 2010-2023")
 
+
+
 ```
 
 It looks like the areas along East (Gresham) -West (Hillsboro) MAX railway have the highest concentrations of of security incidents. 
-
 
 Identifying top 5 tracts by incident count across data set 
 ```{r}
@@ -494,31 +495,8 @@ What about non-MAX incidents?
 df2 %>% filter(type != 'MAX') %>% group_by(tractce) %>% count() %>% arrange(desc(n))
 
 ```
-Tract # 008100 = Gateway Transit Center
-
-```{r}
-df2 %>% filter(tractce == '010001') %>% group_by(location) %>% count()
 
 
-```
-
-
-
-Tract # 010001 is far and away top dog - where is this ? *Gresham*
-```{r}
-df2 %>% filter(tractce == '010001') %>% group_by(location) %>% count()
-```
-
-
-plot(tri_county_tracts %>% filter(tractce == '010001')) # lol, cool fin 
-
-incident_per_tract %>% 
-  mutate(is_010001 = tractce == '010001') %>% 
-  ggplot() +
-  geom_sf(aes(geometry = geometry.y, fill = is_010001)) +
-  coord_sf(xlim = c(-123.1, -122.4), ylim = c(45.3, 45.7)) + 
-  labs(title = "Trimet Security Incident Hotspots, 2010-2023")
-```
 
 
 
