@@ -26,21 +26,25 @@ library(skimr)
 ## DATA CLEANING
 
 ```{r}
-#this is the raw data provided by TriMet, through Karol, on Jun 24 2023 
-df = read_csv('https://raw.githubusercontent.com/karolo89/capstone/main/data/trimet_2010_2023.csv')
-skim(df)     
-
-df = df %>% rename_all(funs(tolower(.))) # I like lower case columns 
-df = df %>% select(-incident_begin_date,-division_code, -x_coordinate,-y_coordinate,-loc_x,-loc_y) # removing non-pertinent columns 
+#this is the raw data provided by TriMet, through Karol, on Jun 24 2023
+df = read_csv(
+  'https://raw.githubusercontent.com/karolo89/capstone/main/data/trimet_2010_2023.csv') %>%
+  rename_all(funs(tolower(.)))   %>% # I like lower case columns
+  select(-incident_begin_date, # removing non-pertinent columns 
+         -division_code,
+         -x_coordinate,
+         -y_coordinate,
+         -loc_x,
+         -loc_y) 
 
 #adding date + time columns:
-df = df %>% mutate(date = as.POSIXct(date, format="%m/%d/%Y"))
-
-df = df %>% mutate(year = year(date), 
-                     month = month(date, label = TRUE), 
-                     day = day(date), 
-                     wday = wday(date, label = TRUE), 
-                     hour = hour(time))
+df = df %>% mutate(date = as.POSIXct(date, format = "%m/%d/%Y")) %>% 
+  mutate(
+    year = year(date),
+    month = month(date, label = TRUE),
+    day = day(date),
+    wday = wday(date, label = TRUE),
+    hour = hour(time))
 
 #looks like we have some duplicate incidents 
 df= df[!duplicated(df$incident_id),]
@@ -65,16 +69,45 @@ skim(df) #also note: 524 rows are missing comments, 4149 rows are missing locati
 ```
 
 ## LOCATION DATA ANALYSIS 
+
+### Loading TriMet Shapefiles
+
+routes & stops (primary shapefile)
 ```{r}
 #loading trimet's 'routes & stops' shapfiles, courtesy of Trimet's developer resources: <https://developer.trimet.org/>
 shape_rs = read_sf(dsn = '/Users/chanks/workspace/capstone/data/shapefiles/tm_route_stops', 
                 layer = 'tm_route_stops') #loading routes and stops shapefile data 
 
 # confirming that shapefile `stop_id` is the same as security dataset's `location_id` 
-shape_rs %>% filter(str_detect(stop_name,"Hollywood")) # Hollywood TC id is 10871
+shape_rs %>% filter(str_detect(stop_name,"Hollywood")) # oneHollywood TC id is 10871
 
-df %>% filter(location_id == 10871) #there are multiple stop_ids per transit center
 ```
+
+Additional shapefiles
+```{r}
+shape_rail_stops = read_sf(dsn = '/Users/chanks/workspace/capstone/data/shapefiles/tm_rail_stops', 
+                layer = 'tm_rail_stops') 
+
+coords_rail_stops = st_transform(shape_rail_stops,"+proj=longlat +ellps=WGS84 +datum=WGS84") %>%  st_coordinates()
+
+shape_rail_stops = bind_cols(shape_rail_stops, coords_rail_stops) %>% rename(lat = Y, lon = X)
+
+#nope, this does not have the data I want 
+
+
+shape_parkride = read_sf(dsn = '/Users/chanks/workspace/capstone/data/shapefiles/tm_parkride', 
+                layer = 'tm_parkride') 
+
+coords_parkride = st_transform(shape_parkride,"+proj=longlat +ellps=WGS84 +datum=WGS84") %>%  st_coordinates()
+
+shape_parkride = bind_cols(shape_parkride, coords_parkride) %>% rename(lat = Y, lon = X)
+
+#nice to have, but this does not have location_id 
+
+shape_tc = read_sf(dsn = '/Users/chanks/workspace/capstone/data/shapefiles/tm_tran_cen', 
+                layer = 'tm_tran_cen')
+```
+
 
 Preparing tract data
 ```{r}
@@ -82,7 +115,7 @@ library(tigris)
 options(tigris_use_cache = TRUE)
 
 this.year = 2020
-?tracts()
+
 mult_tracts = tracts(state = 'OR', county = "Multnomah", cb = T, year = this.year)
 clack_tracts = tracts(state = 'OR', county = "Clackamas", cb = T, year = this.year)
 wash_tracts = tracts(state = 'OR', county = "Washington", cb = T, year = this.year)
@@ -106,9 +139,15 @@ length(shape_rs$stop_id) # 8539 total stop_ids listed, this is likely because mu
 # ther are 21 routes that use stop id 13248
 
 shape_rs = st_transform(shape_rs, crs = st_crs(tri_county_tracts)) #joining tract information to shape_rs (for mapping later)
-shape_rs = st_join(shape_rs,tri_county_tracts)
+shape_rs = st_join(shape_rs,tri_county_tracts)  
+
+#I also want the tract multipolygon spatial data
+class(tri_county_tracts) # this is a sf object, I need to cast it as data frame to do non-spatial join 
+shape_rs = shape_rs %>% left_join(tri_county_tracts %>% select(TRACTCE,geometry) %>% as.data.frame(), by = "TRACTCE")
 
 ```
+
+
 Prepping route and stops shapefile to join 
 ```{r}
 #changing stop_id to location_id so that dataframes may join on common key (rename() throws an error that I haven't resolved)
@@ -124,14 +163,8 @@ shape_rs_distinct %>% filter(location_id == 13248) # confirming that this clacka
 
 ```
 
-JOIN
-```{r}
-df2 = df %>% left_join(shape_rs_distinct, by = "location_id")
 
-```
-
-
-The routes & stops shapefile is missing some locations....I will hunt these down.
+The `shape_rs` table is missing some locations that are in the `df2`....I will hunt these down.
 ```{r}
 #for example, this gateway transit stop 
 df2 %>% filter(location_id == 10664) #this stop_id does not exist according to trimet.org - change this id to 8196
@@ -153,34 +186,12 @@ skim(test)
 shape_rs_distinct %>% filter(location_id == 10670)
 ```
 
-before I go down the rabbit hole of manually matching location_id, perhaps there is another shapefile with these locations. Trimet.org does not recognize this as public-serving stops 
-```{r}
-shape_rail_stops = read_sf(dsn = '/Users/chanks/workspace/capstone/data/shapefiles/tm_rail_stops', 
-                layer = 'tm_rail_stops') 
-
-coords_rail_stops = st_transform(shape_rail_stops,"+proj=longlat +ellps=WGS84 +datum=WGS84") %>%  st_coordinates()
-
-shape_rail_stops = bind_cols(shape_rail_stops, coords_rail_stops) %>% rename(lat = Y, lon = X)
-
-#nope, this does not have the data I want 
-
-
-shape_parkride = read_sf(dsn = '/Users/chanks/workspace/capstone/data/shapefiles/tm_parkride', 
-                layer = 'tm_parkride') 
-
-coords_parkride = st_transform(shape_parkride,"+proj=longlat +ellps=WGS84 +datum=WGS84") %>%  st_coordinates()
-
-shape_parkride = bind_cols(shape_parkride, coords_parkride) %>% rename(lat = Y, lon = X)
-
-#nice to have, but this does not have location_id 
-
-shape = read_sf(dsn = '/Users/chanks/workspace/capstone/data/shapefiles/tm_tran_cen', 
-                layer = 'tm_tran_cen')
-```
 
 Looks like I need to roll up the sleeves and assign an active location_id to as many of these missing rows as possible: 
 
 *note - this data cleaning process could be automated with find/replace function. I did this manually for at least stops with 100 hits or more to ensure that their new location_id was a legitimate and active stop in transit system. To visit. * 
+
+I am changing the `location_id` in `df` to match a location that is recognized in the `shape_rs` spatial data table. I have done this for *all locations with at least 100 incidents*. 
 
 ```{r}
 #one component of function to automate this process: 
@@ -190,17 +201,17 @@ clean_data = function(old,new){
 }
 
 
-#let's start with location_ids with at least 100 incidents 
+#llocation_ids with at least 100 incidents 
 missing_df2 = df2 %>% filter(is.na(lon)) %>% group_by(location_id) %>% count() %>% arrange(desc(n)) %>% filter(n > 100)
 
 #location_id = 0 
 df2 %>% filter(location_id == 0) #4,149 of these simply do not have a location...it may be fruitless to attempt to hunt for a place to pin these on a map :/ it would be guessing...
 
-#location_id = 10665
+#10665
 df2 %>% filter(location_id == 10665) %>% group_by(location) %>% count() # Gresham TC ! #active id is 10857
 df = df %>% mutate(location_id = ifelse(location_id == 10665,10857, location_id))
 
-#location_id = 10659
+#10659
 df2 %>% filter(location_id == 10659) #Beaverton TC 
 shape_rs %>% filter(str_detect(stop_name, "Beaverton")) #9654
 df = df %>% mutate(location_id = ifelse(location_id == 10659,9654, location_id))
@@ -362,11 +373,16 @@ df = clean_data(10661,8213)
 ```
 
 
-JOIN AGAIN 
+### JOIN of df with shape
 ```{r}
-df2 = df %>% left_join(shape_rs_distinct, by = "location_id")
+df2 = df %>% left_join(shape_rs_distinct %>% select(-rte,-dir,-rte_desc,-dir_desc,-stop_seq), by = "location_id")
 
-missing_per_year = df2 %>% filter(is.na(lon)) %>% group_by(year) %>% count()
+```
+
+Assessing missing/dirty data in `df2`
+```{r}
+
+missing_per_year = df2 %>% filter(is.na(lon)) %>% group_by(year) %>% count() # missing spatial data due to lack of location_id match
 
 total_per_year  = df2 %>% group_by(year) %>% count() 
 
@@ -384,7 +400,6 @@ skim(df2)
 #the cols with NA are comments (427) and route (13210) - not every incident could necessarily be associated with a route, since some incidents happen not on car/train but on trimet property. We can always remove those later. For now I will use this subsetted data to gain insight upon where in the trimet system events happen. 
 
 df2
-
 ```
 
 Examining cleaned up dataset, `df2`: 
@@ -398,7 +413,7 @@ df2 %>% group_by(zipcode) %>% count() %>% arrange(desc(n)) # 97220 - that is 82n
 df2 %>% group_by(zipcode) %>% count() %>% arrange(n) # 97022 - Clackamas county, Eagle Creek 
 
 ```
-
+Map of incidents in tri-county area: 
 
 ```{r}
 ggplot() +
@@ -410,6 +425,9 @@ ggplot() +
 Mapping by tract 
 
 ```{r}
+df2 %>% ggplot() + geom_sf(mapping = aes(geometry = geometry.y, fill = NAMELSADCO )) + # okay this is good, I have a layer of each tract across the 3 counties
+  coord_sf(xlim = c(-123.1, -122.4), ylim = c(45.3, 45.6)) # there appear to be some difference between this and map above.... 
+
 
 ```
 
