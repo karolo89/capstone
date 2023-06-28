@@ -143,8 +143,11 @@ shape_rs = st_join(shape_rs,tri_county_tracts)
 
 #I also want the tract multipolygon spatial data
 class(tri_county_tracts) # this is a sf object, I need to cast it as data frame to do non-spatial join 
+
 shape_rs = shape_rs %>% left_join(tri_county_tracts %>% select(TRACTCE,geometry) %>% as.data.frame(), by = "TRACTCE")
 
+
+shape_rs = shape_rs %>% rename_all(funs(tolower(.))) 
 ```
 
 
@@ -161,6 +164,8 @@ shape_rs_distinct = shape_rs %>% distinct(location_id, .keep_all = TRUE)
 
 shape_rs_distinct %>% filter(location_id == 13248) # confirming that this clackamas tc stop has only one row
 
+
+
 ```
 
 
@@ -175,18 +180,21 @@ shape_rs_distinct %>% filter(str_detect(stop_name,"Gateway")) #10864
 
 df2 %>% filter(str_detect(location, "Gateway")) %>% group_by(location) %>% count() %>% arrange(desc(n)) #all but one of these location names is Gateway TC
 
-#changing location_id of Gateway TC to 10864 in df
-df = df %>% mutate(location_id = ifelse(str_detect(location, "Gateway") & !str_detect(location, "[Tt]errace"),10864, location_id)) 
-
-
 df2 %>% filter(is.na(lon)) %>% group_by(location_id) %>% count() %>% arrange(desc(n))
+
+df2 %>% filter(lon == -122.5097)
+#######
 
 
 skim(test)
 shape_rs_distinct %>% filter(location_id == 10670)
 ```
 
+### JOIN of df with shape_rs_distinct
+```{r}
+df2 = df %>% left_join(shape_rs_distinct %>% select(-rte,-dir,-rte_desc,-dir_desc,-stop_seq), by = "location_id")
 
+```
 Looks like I need to roll up the sleeves and assign an active location_id to as many of these missing rows as possible: 
 
 *note - this data cleaning process could be automated with find/replace function. I did this manually for at least stops with 100 hits or more to ensure that their new location_id was a legitimate and active stop in transit system. To visit. * 
@@ -201,8 +209,14 @@ clean_data = function(old,new){
 }
 
 
-#llocation_ids with at least 100 incidents 
+#location_ids with at least 100 incidents 
 missing_df2 = df2 %>% filter(is.na(lon)) %>% group_by(location_id) %>% count() %>% arrange(desc(n)) %>% filter(n > 100)
+```
+
+
+```{r}
+#changing location_id of Gateway TC to 10864 in df
+df = df %>% mutate(location_id = ifelse(str_detect(location, "Gateway") & !str_detect(location, "[Tt]errace"),10864, location_id)) 
 
 #location_id = 0 
 df2 %>% filter(location_id == 0) #4,149 of these simply do not have a location...it may be fruitless to attempt to hunt for a place to pin these on a map :/ it would be guessing...
@@ -399,7 +413,11 @@ df2 = df2 %>% filter(location_id != 0) %>% filter(!is.na(lon))
 skim(df2)
 #the cols with NA are comments (427) and route (13210) - not every incident could necessarily be associated with a route, since some incidents happen not on car/train but on trimet property. We can always remove those later. For now I will use this subsetted data to gain insight upon where in the trimet system events happen. 
 
-df2
+```
+
+Clean-up time
+```{r}
+df2[c('type','jurisdic','frequent','namelsadco')] =  lapply(df2 %>% select(type,jurisdic,frequent,namelsadco), factor)
 ```
 
 Examining cleaned up dataset, `df2`: 
@@ -425,14 +443,82 @@ ggplot() +
 Mapping by tract 
 
 ```{r}
-df2 %>% ggplot() + geom_sf(mapping = aes(geometry = geometry.y, fill = NAMELSADCO )) + # okay this is good, I have a layer of each tract across the 3 counties
+df2 %>% ggplot() + geom_sf(mapping = aes(geometry = geometry.y, fill = namelsadco )) + # okay this is good, I have a layer of each tract across the 3 counties
   coord_sf(xlim = c(-123.1, -122.4), ylim = c(45.3, 45.6)) # there appear to be some difference between this and map above.... 
+
+# there some tracts that are missing...or that have no data? 
+```
+
+Aggregating incident count by tract
+```{r}
+incident_per_tract = df2 %>% group_by(tractce) %>%
+  count() %>%
+  ungroup %>%
+  left_join(df2 %>% select(tractce, namelsadco, geometry.y), by = "tractce") 
+
+  
+ggplot(incident_per_tract) +
+  geom_sf(aes(geometry = geometry.y, fill = log(n))) + # logging n to condense the scale to show more variation 
+  scale_fill_gradient(
+      low = "white",
+      high = "darkred",
+      na.value = "grey50") +
+  coord_sf(xlim = c(-123.1, -122.4), ylim = c(45.3, 45.7)) + 
+  labs(title = "Trimet Security Incident Hotspots, 2010-2023")
+
+```
+
+It looks like the areas along East (Gresham) -West (Hillsboro) MAX railway have the highest concentrations of of security incidents. 
+
+
+Identifying top 5 tracts by incident count across data set 
+```{r}
+top5tracts = df2 %>% group_by(tractce) %>% count() %>% arrange(desc(n)) %>% head(n = 5) 
+
+df2 %>% filter(tractce %in% top5tracts$tractce) %>% group_by(location) %>% count() %>% arrange(desc(n))
+                                                           
+```
+
+Gateway Transit Center (008100)
+Rose Quarter Transit Center (002303)
+Beaverton Transit Center (031302)
+Cleveland Ave Max Station (010001)
+Gresham Transit Center (010001)
+Clackamas Town Center (022201)
+Downtown Transit Mall (010602)
+
+This makes sense....as these TriMet properties likely have the highest volume across the system. 
+
+What about non-MAX incidents? 
+```{r}
+df2 %>% filter(type != 'MAX') %>% group_by(tractce) %>% count() %>% arrange(desc(n))
+
+```
+Tract # 008100 = Gateway Transit Center
+
+```{r}
+df2 %>% filter(tractce == '010001') %>% group_by(location) %>% count()
 
 
 ```
 
 
 
+Tract # 010001 is far and away top dog - where is this ? *Gresham*
+```{r}
+df2 %>% filter(tractce == '010001') %>% group_by(location) %>% count()
+```
+
+
+plot(tri_county_tracts %>% filter(tractce == '010001')) # lol, cool fin 
+
+incident_per_tract %>% 
+  mutate(is_010001 = tractce == '010001') %>% 
+  ggplot() +
+  geom_sf(aes(geometry = geometry.y, fill = is_010001)) +
+  coord_sf(xlim = c(-123.1, -122.4), ylim = c(45.3, 45.7)) + 
+  labs(title = "Trimet Security Incident Hotspots, 2010-2023")
+```
 
 
 
