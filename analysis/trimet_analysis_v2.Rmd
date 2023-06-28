@@ -61,6 +61,7 @@ df %>% filter(!is.na(location_id))
 
 skim(df) #also note: 524 rows are missing comments, 4149 rows are missing location names (this coudl be rectified as we have location_id)
 
+
 ```
 
 ## LOCATION DATA ANALYSIS 
@@ -409,7 +410,7 @@ ggplot() +
 Mapping by tract 
 
 ```{r}
-df2
+
 ```
 
 
