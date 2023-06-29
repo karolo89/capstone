@@ -494,9 +494,15 @@ What about non-MAX incidents?
 ```{r}
 df2 %>% filter(type != 'MAX') %>% group_by(tractce) %>% count() %>% arrange(desc(n))
 
+
+write_rds(df2, file = 'df_spatial_clean.rds')
 ```
 
 
+Loading wrangled datasets, `df3` 
+```{r}
+
+```
 
 
 
@@ -506,7 +512,7 @@ df2 %>% filter(type != 'MAX') %>% group_by(tractce) %>% count() %>% arrange(desc
 
 ## TEMPORAL DATA ANALYSIS 
 ```{r}
-
+df3 = read_rds()
 ```
 
 
