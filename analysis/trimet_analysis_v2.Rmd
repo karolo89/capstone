@@ -494,25 +494,25 @@ What about non-MAX incidents?
 ```{r}
 df2 %>% filter(type != 'MAX') %>% group_by(tractce) %>% count() %>% arrange(desc(n))
 
+```
 
+Exporting wrangled dataset: 
+```{r}
 write_rds(df2, file = 'df_spatial_clean.rds')
 ```
 
 
-Loading wrangled datasets, `df3` 
+Loading wrangled datasets, `df3`: 
 ```{r}
-
+df3 = read_rds('https://raw.githubusercontent.com/karolo89/capstone/main/data/df_spatial_clean.rds')
 ```
-
-
-
 
 
 
 
 ## TEMPORAL DATA ANALYSIS 
 ```{r}
-df3 = read_rds()
+
 ```
 
 
