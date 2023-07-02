@@ -477,6 +477,8 @@ Identifying top 5 tracts by incident count across data set
 top5tracts = df2 %>% group_by(tractce) %>% count() %>% arrange(desc(n)) %>% head(n = 5) 
 
 df2 %>% filter(tractce %in% top5tracts$tractce) %>% group_by(location) %>% count() %>% arrange(desc(n))
+
+head(df2)
                                                            
 ```
 
@@ -510,11 +512,145 @@ df3 = read_rds('https://raw.githubusercontent.com/karolo89/capstone/main/data/df
 
 
 
-## TEMPORAL DATA ANALYSIS 
+## TIME ANALYSIS 
 ```{r}
+# Load necessary libraries
+library(ggplot2)
+library(gganimate)
+library(dplyr)
+
+# Group data by year and location, and count the number of incidents
+df_grouped <- df3 %>%
+  group_by(year, location) %>%
+  summarise(incident_count = n())
+
+# Create ggplot object
+p <- ggplot(df_grouped, aes(x = year, y = incident_count, color = location)) +
+  geom_line(size = 1) +
+  geom_point(data = subset(df_grouped, year == 2022), colour = "red", size = 4, shape = 4) +
+  labs(
+    title = "Change in Number of Incidents Over Time",
+    x = "Year",
+    y = "Number of Incidents",
+    color = "Location"
+  ) +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  geom_text(
+    data = subset(df_grouped, year == 2022),
+    aes(label = ifelse(year == 2022, "???", "")),
+    vjust = -1.5,
+    hjust = 0.5,
+    size = 4,
+    colour = "red"
+  )
+```
+
+```{r}
+# Add animation
+p_animate <- p + transition_reveal(year)
+
+# Render the animation
+animate(p_animate, end_pause = 50, height = 400, width = 600)
 
 ```
 
+Clearly significant results in the year 2022. This will be the year we focus on to prime our analysis. Lets look to see if there is a trend with specific seasons/months.
+
+```{r}
+# Filter original dataframe to include only rows from the year 2022
+df_2022 <- df3 %>%
+  filter(year == 2022)
+
+# Assign a 'season' column to df_2022
+df_2022 <- df_2022 %>%
+  mutate(season = case_when(
+    month %in% c(12, 1, 2) ~ "Winter",
+    month %in% 3:5 ~ "Spring",
+    month %in% 6:8 ~ "Summer",
+    month %in% 9:11 ~ "Autumn",
+    TRUE ~ as.character(month)
+  ))
+
+
+# Assign a 'season' column to df_2022 based on 'month'
+df_2022 <- df_2022 %>%
+  mutate(season = case_when(
+    month %in% c("Dec", "Jan", "Feb") ~ "Winter",
+    month %in% c("Mar", "Apr", "May") ~ "Spring",
+    month %in% c("Jun", "Jul", "Aug") ~ "Summer",
+    month %in% c("Sep", "Oct", "Nov") ~ "Autumn",
+    TRUE ~ as.character(month)
+  ))
+
+```
+
+
+
+```{r}
+library(lubridate)
+
+# Calculate the number of incidents per month
+df_sorted_2022 <- df_2022 %>%
+   group_by(month, season) %>%
+   summarise(incident_count = n(), .groups = "drop") %>%
+   arrange(month)
+
+# Calculate the average number of incidents per month
+df_avg_2022 <- df_2022 %>%
+  group_by(month) %>%
+  summarise(avg_incident_count = n(), .groups = "drop") %>%
+  arrange(month)
+
+# Plotting the bar plot with the trendline
+# Define a color palette
+color_palette <- c("Winter" = "#1f78b4", "Spring" = "#33a02c", "Summer" = "#e31a1c", "Autumn" = "#ff7f00")
+
+ggplot(df_sorted_2022, aes(x = month, y = incident_count, fill = season)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = color_palette) +
+  labs(title = "Number of Incidents by Month in 2022", x = "Month", y = "Number of Incidents", fill = "Season") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5),
+        legend.position = "bottom") +
+  geom_line(data = df_avg_2022, aes(x = month, y = avg_incident_count, group = 1), 
+            color = "black", size = 1, inherit.aes = FALSE)
+
+```
+
+Appears to be a trend that in the warmer seasons incidents increase. Lets see if the statistics support this with a chi squared test of proportional independence.
+
+```{r}
+
+# Chi-square test for independence between month and incidents
+chisq_test_month <- chisq.test(table(df_2022$month))
+
+print(chisq_test_month)
+
+# Chi-square test for independence between season and incidents
+chisq_test_season <- chisq.test(table(df_2022$season))
+
+print(chisq_test_season)
+
+```
+
+
+```{r}
+# Extract standardized residuals
+stdres <- chisq_test_month$stdres
+names(stdres) <- month.abb
+
+# Print residuals
+print(stdres)
+
+# Highlight residuals greater than 2 in absolute value
+significant_months <- names(stdres)[abs(stdres) > 2]
+
+print(paste("Months with significantly different number of incidents than expected: ", paste(significant_months, collapse = ", ")))
+
+```
+
+The following months show statistical significance, specifically in that April, September, and October have less than expected incidents while Jan, & May-July have more than expected incidents. Lets see if there are trends within time of day.
 
 
 ## TEXT DATA ANALYSIS 
