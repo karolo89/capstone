@@ -500,7 +500,44 @@ What about non-MAX incidents?
 ```{r}
 df2 %>% filter(type != 'MAX') %>% group_by(tractce) %>% count() %>% arrange(desc(n))
 
+# 008100 = gateway transit center area
 ```
+
+Let's map the incident activity in 2022 in tracte 008100: 
+
+```{r}
+
+gateway_2022 = df3 %>% filter(tractce == '008100' & year == 2022) %>% group_by(location_id) %>% count() 
+gateway_2022 = inner_join(gateway_2022, df3 %>% select(location_id, lon, lat) %>% distinct(), by = 'location_id')
+
+ggplot() +
+  geom_sf(data = tri_county_tracts %>% filter(TRACTCE == '008100')) +
+  geom_point(data = gateway_2022, aes(x = lon, y = lat, size =n), color = 'red') + 
+  theme(legend.position = "none")
+
+#we need a street level map for to show where these events are. 
+```
+
+
+```{r}
+metro_2022 = df3 %>% filter(year == 2022) %>% group_by(location_id) %>% summarize(n = n())
+metro_2022 = inner_join(metro_2022, df3 %>% select(location_id, lon, lat) %>% distinct(), by = 'location_id')
+
+ggplot() +
+  geom_sf(data = tri_county_tracts) +
+  geom_point(data = metro_2022, aes(x = lon, y = lat, size = n, color = n, alpha = n)) + 
+  theme(legend.position = "none") + 
+  coord_sf(xlim = c(-123.1, -122.4), ylim = c(45.3, 45.7)) + 
+  scale_color_gradient(low = 'pink', high = 'darkred') + 
+  labs(title = "Number of security incidents in 2022, by location_id")
+
+metro_2022 %>% arrange(desc(n)) #10864 had 350 incidents, by far the most 
+
+df3 %>% filter(location_id == "10864") # Gateway Transit Center 
+```
+
+Gateway Transit center is by far the place with most security incidents in 2022. 
+
 
 Exporting wrangled dataset: 
 ```{r}
