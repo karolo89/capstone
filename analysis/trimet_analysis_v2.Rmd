@@ -168,6 +168,11 @@ shape_rs_distinct %>% filter(location_id == 13248) # confirming that this clacka
 
 ```
 
+### JOIN of df with shape_rs_distinct
+```{r}
+df2 = df %>% left_join(shape_rs_distinct %>% select(-rte,-dir,-rte_desc,-dir_desc,-stop_seq), by = "location_id")
+
+```
 
 The `shape_rs` table is missing some locations that are in the `df2`....I will hunt these down.
 ```{r}
@@ -190,11 +195,7 @@ skim(test)
 shape_rs_distinct %>% filter(location_id == 10670)
 ```
 
-### JOIN of df with shape_rs_distinct
-```{r}
-df2 = df %>% left_join(shape_rs_distinct %>% select(-rte,-dir,-rte_desc,-dir_desc,-stop_seq), by = "location_id")
 
-```
 Looks like I need to roll up the sleeves and assign an active location_id to as many of these missing rows as possible: 
 
 *note - this data cleaning process could be automated with find/replace function. I did this manually for at least stops with 100 hits or more to ensure that their new location_id was a legitimate and active stop in transit system. To visit. * 
@@ -435,9 +436,10 @@ Map of incidents in tri-county area:
 
 ```{r}
 ggplot() +
-  geom_sf(data = tri_county_tracts) +
+  geom_sf(data = tri_county_tracts, aes(fill = GEOID)) +
   geom_point(data = df2, aes(x = lon, y = lat), color = 'red', alpha = .05, size =.5) + 
-  coord_sf(xlim = c(-123.1, -122.4), ylim = c(45.3, 45.6))
+  coord_sf(xlim = c(-123.1, -122.4), ylim = c(45.3, 45.6)) + 
+  theme(legend.position = "none")
  
 ```
 Mapping by tract 
@@ -465,6 +467,8 @@ ggplot(incident_per_tract) +
       na.value = "grey50") +
   coord_sf(xlim = c(-123.1, -122.4), ylim = c(45.3, 45.7)) + 
   labs(title = "Trimet Security Incident Hotspots, 2010-2023")
+
+
 
 
 
@@ -503,6 +507,27 @@ Exporting wrangled dataset:
 write_rds(df2, file = 'df_spatial_clean.rds')
 ```
 
+hotspots in 2021 2022 
+```{r}
+library(plotly)
+incident_per_tract= df2 %>% filter(year == 2022) %>% group_by(tractce) %>%
+  count() %>%
+  ungroup %>%
+  left_join(df2 %>% select(tractce,year, namelsadco, geometry.y), by = "tractce") 
+
+
+map_plot = ggplot(incident_per_tract) +
+  geom_sf(aes(geometry = geometry.y, fill = log(n))) + # logging n to condense the scale to show more variation 
+  scale_fill_gradient(
+      low = "white",
+      high = "darkred",
+      na.value = "grey50") +
+  coord_sf(xlim = c(-123.1, -122.4), ylim = c(45.3, 45.7)) + 
+  labs(title = "Trimet Security Incident Hotspots, 2022") 
+
+
+```
+
 
 Loading wrangled datasets, `df3`: 
 ```{r}
@@ -535,7 +560,8 @@ p <- ggplot(df_grouped, aes(x = year, y = incident_count, color = location)) +
     color = "Location"
   ) +
   theme_minimal() +
-  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(plot.title = element_text(hjust = 0.5), 
+        legend.position = "none") +
   geom_text(
     data = subset(df_grouped, year == 2022),
     aes(label = ifelse(year == 2022, "???", "")),
@@ -544,6 +570,7 @@ p <- ggplot(df_grouped, aes(x = year, y = incident_count, color = location)) +
     size = 4,
     colour = "red"
   )
+
 ```
 
 ```{r}
@@ -551,7 +578,7 @@ p <- ggplot(df_grouped, aes(x = year, y = incident_count, color = location)) +
 p_animate <- p + transition_reveal(year)
 
 # Render the animation
-animate(p_animate, end_pause = 50, height = 400, width = 600)
+animate(p_animate, end_pause = 50, height = 400, width = 600) # error: `geom_line()`: Each group consists of only one observation.
 
 ```
 

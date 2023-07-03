@@ -853,12 +853,16 @@ shape2 = read_sf(dsn = '/Users/chanks/workspace/capstone/data/shapefiles/tm_rout
                 layer = 'tm_route_stops')
 
 head(shape2)
+
+shape2_coords = st_transform(shape2,"+proj=longlat +ellps=WGS84 +datum=WGS84") %>% st_coordinates()
+
+shape2 = bind_cols(shape2, shape2_coords) %>% rename(lat = Y, lon = X)
 ```
 
 
 ```{r}
 routes = ggplot() + geom_sf(data = tri_county_tracts) + 
-          geom_sf(data = shape2, aes(color = factor(rte)), alpha = .5, size = 1) + 
+          geom_sf(data = shape2, aes(color = factor(rte)), linetype = "11") + 
           labs(title =  "TriMet Routes & Stops") +
           #geom_sf_text(data = shape, aes(label = name), size = 2, nudge_y = -.0002) + 
           coord_sf(xlim=c(-123.1, -122.4), ylim = c(45.3,45.6)) + 
@@ -866,6 +870,8 @@ routes = ggplot() + geom_sf(data = tri_county_tracts) +
 
 routes
 ```
+
+
 
 
 #######
