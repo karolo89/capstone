@@ -502,11 +502,16 @@ df2 %>% filter(type != 'MAX') %>% group_by(tractce) %>% count() %>% arrange(desc
 
 # 008100 = gateway transit center area
 ```
+Loading wrangled datasets, `df3`: 
+```{r}
+df3 = read_rds('https://raw.githubusercontent.com/karolo89/capstone/main/data/df_spatial_clean.rds')
+```
+
+
 
 Let's map the incident activity in 2022 in tracte 008100: 
 
 ```{r}
-
 gateway_2022 = df3 %>% filter(tractce == '008100' & year == 2022) %>% group_by(location_id) %>% count() 
 gateway_2022 = inner_join(gateway_2022, df3 %>% select(location_id, lon, lat) %>% distinct(), by = 'location_id')
 
@@ -533,18 +538,50 @@ ggplot() +
 
 metro_2022 %>% arrange(desc(n)) #10864 had 350 incidents, by far the most 
 
-df3 %>% filter(location_id == "10864") # Gateway Transit Center 
+df3 %>% filter(location_id == "10864") %>% head(n = 1) %>% select(location) # Gateway Transit Center 
 ```
 
 Gateway Transit center is by far the place with most security incidents in 2022. 
 
-
-Exporting wrangled dataset: 
+What stops are the other 4 stops with the most security incidents in 2022? 
 ```{r}
-write_rds(df2, file = 'df_spatial_clean.rds')
+top5_2022 = metro_2022 %>% arrange(desc(n)) %>% head(n =5) #10864 had 350 incidents, by far the most 
+
+inner_join(top5_2022,df3 %>% select(location_id,location), by = 'location_id') %>% group_by(location_id) %>% distinct(location) %>% tail(n =5)
+```
+The other stops with the most security incidents are: 
+
+Elmonica / SW 170th Ave MAX Station 
+Hollywood/NE 42nd Ave TC 
+Beaverton TC MAX Station 
+Rose Quarter TC MAX Station
+
+Note that these stops are not necessarily the most dangerous. They have the highest volume of traffic and incidents. It does make sense that the MAX would have more security incidents, as they hold more people, often have less supervision on the cars, and they offer shelter / seclusion at times. It will be interesting to see what _types_ of incidents occur the most at these sites. 
+
+
+Is this trend for Gateway TC true for other years? Does it match the overall trend in the system in the same time frame? 
+
+```{r}
+gateway_tc = df3 %>% filter(location_id == 10864)
+gateway_tc %>% group_by(year) %>% count() %>% ggplot() + geom_col(aes(x = year, y = n)) # this is a familiar pattern...
+
+df3 = df3 %>% mutate(is_gateway = ifelse(location_id == 10864, 1,0))
+
+df3 %>% group_by(year, is_gateway) %>% count() %>% ggplot() + geom_col(aes(x = year, y = n, fill = factor(is_gateway, levels = c(0,1)))) + 
+  guides(fill = guide_legend(title = "Is Gateway TC"))
+
+
 ```
 
-hotspots in 2021 2022 
+```{r}
+gateway_year_counts = gateway_tc  %>% group_by(year) %>% count()       
+df3_year_counts = df3 %>% filter(is_gateway == 0) %>% group_by(year) %>% count()
+
+cor(gateway_year_counts$n,df3_year_counts$n) #the increase in security incidents across metro area is highly correlated with the increase in incidents at Gateway
+```
+
+
+Looking at hotspots in 2021 vs. 2022 
 ```{r}
 library(plotly)
 incident_per_tract= df2 %>% filter(year == 2022) %>% group_by(tractce) %>%
@@ -566,10 +603,7 @@ map_plot = ggplot(incident_per_tract) +
 ```
 
 
-Loading wrangled datasets, `df3`: 
-```{r}
-df3 = read_rds('https://raw.githubusercontent.com/karolo89/capstone/main/data/df_spatial_clean.rds')
-```
+
 
 
 
