@@ -655,7 +655,13 @@ unique(top15_tracts_2022$tractce)
 Which routes are most involved in these areas with high incident counts? It appears that it is the Red and Blue MAX lines. 
 
 
+Within these tracts, if we take out the MAX related security incidents, are they still high-incident areas?     
+```{r}
+df3 %>% filter(tractce %in% top15_tracts_2022$tractce & year == 2022 & type != 'MAX') %>% group_by(tractce) %>% count()
 
+df3 %>% filter(tractce %in% top15_tracts_2022$tractce & year == 2022 ) %>% group_by(tractce) %>% count()
+```
+Most of the tracts are not that bad when you take out Max related incidents, except Gateway transit center area....
 
 
 
