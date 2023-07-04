@@ -584,13 +584,15 @@ cor(gateway_year_counts$n,df3_year_counts$n) #the increase in security incidents
 Looking at hotspots in 2021 vs. 2022 
 ```{r}
 library(plotly)
-incident_per_tract= df2 %>% filter(year == 2022) %>% group_by(tractce) %>%
-  count() %>%
-  ungroup %>%
-  left_join(df2 %>% select(tractce,year, namelsadco, geometry.y), by = "tractce") 
 
+incident_per_tract_2022= df3 %>% filter(year == 2022) %>% group_by(tractce) %>%
+  count() %>% left_join(df3 %>% select(tractce, namelsadco, geometry.y), by = "tractce") 
 
-map_plot = ggplot(incident_per_tract) +
+incident_per_tract_2021= df3 %>% filter(year == 2021) %>% group_by(tractce) %>%
+  count() %>% left_join(df3 %>% select(tractce, namelsadco, geometry.y), by = "tractce") 
+
+choropleth = function(subset){
+ggplot(subset) +
   geom_sf(aes(geometry = geometry.y, fill = log(n))) + # logging n to condense the scale to show more variation 
   scale_fill_gradient(
       low = "white",
@@ -598,9 +600,61 @@ map_plot = ggplot(incident_per_tract) +
       na.value = "grey50") +
   coord_sf(xlim = c(-123.1, -122.4), ylim = c(45.3, 45.7)) + 
   labs(title = "Trimet Security Incident Hotspots, 2022") 
+}
+
+choropleth(incident_per_tract_2021)
+choropleth(incident_per_tract_2022)
+
 
 
 ```
+
+Animated choropleth across years 2010 - 2023
+```{r}
+library(plotly)
+
+incident_per_tract = df3 %>% group_by(tractce) %>%
+  count() %>% left_join(df3 %>% select(tractce,year, namelsadco, geometry.y), by = "tractce") 
+
+plot = ggplot(incident_per_tract, aes(frame = year)) +
+  geom_sf(aes(geometry = geometry.y, fill = log(n))) + # logging n to condense the scale to show more variation 
+  scale_fill_gradient(
+      low = "white",
+      high = "darkred",
+      na.value = "grey50") +
+  coord_sf(xlim = c(-123.1, -122.4), ylim = c(45.3, 45.7)) + 
+  labs(title = "Trimet Security Incident Hotspots") 
+
+ggplotly(plot)
+```
+
+This animation does not play smoothly, however it is apparent that the same tracts have similarly high concentrations of incidents across these 13 years.  
+
+
+In 2022, which tracts had more than 100 security incidents in that year ? 
+
+```{r}
+top15_tracts_2022 = incident_per_tract_2022 %>% filter(n >= 100) %>% distinct(tractce) %>% inner_join(df3 %>% filter(year == 2022), top15_tracts_2022, by = "tractce") 
+
+#let's plot these events on the map 
+ggplot() +
+  geom_sf(data = tri_county_tracts) +
+  geom_point(data = top15_tracts_2022 %>% group_by(location_id) %>% summarize(n = n(), lon, lat) %>% distinct(n, lon, lat), 
+             aes(x = lon, y = lat, size = n), color = 'blue', alpha = .5) +
+  coord_sf(xlim = c(-122.85, -122.4), ylim = c(45.425, 45.6)) + 
+  theme(legend.position = "none") 
+
+#this basically shows where each max line stops.
+```
+
+Top 15 tracts 
+```{r}
+unique(top15_tracts_2022$tractce)
+```
+
+Which routes are most involved in these areas with high incident counts? It appears that it is the Red and Blue MAX lines. 
+
+
 
 
 
