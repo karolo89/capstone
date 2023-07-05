@@ -1,0 +1,71 @@
+---
+title: "trimet_analysis_v2.2"
+output: html_document
+date: "2023-07-05"
+---
+
+
+Libraries: 
+```{r}
+library(tidyverse)
+library(lubridate)
+library(gridExtra)
+library(forcats)
+library(stringr)
+library(tm)
+library(SnowballC)
+library(RColorBrewer)
+library(tigris)
+library(sf)
+library(skimr)
+
+library(gganimate)
+
+
+```
+
+
+
+
+Dataset: 
+```{r}
+df3 = read_rds('https://raw.githubusercontent.com/karolo89/capstone/main/data/df_spatial_clean.rds')
+```
+
+## TIME ANALYSIS 
+```{r}
+# Group data by year only and count the number of incidents
+df_grouped <- df3 %>%
+  group_by(year) %>%
+  summarise(total_incident_count = n(), .groups = "drop")
+
+# Create ggplot object
+p <- ggplot(df_grouped, aes(x = year, y = total_incident_count)) +
+  geom_line(size = 1, color = "blue") +
+  geom_point(data = subset(df_grouped, year == 2022), colour = "red", size = 4, shape = 4) +
+  labs(
+    title = "Change in Total Number of Incidents Over Time",
+    x = "Year",
+    y = "Total Number of Incidents"
+  ) +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  scale_y_log10() +
+  geom_text(
+    data = subset(df_grouped, year == 2022),
+    aes(label = ifelse(year == 2022, as.character(total_incident_count), "")),
+    vjust = -2.5,
+    hjust = 0.5,
+    size = 4,
+    colour = "red"
+  )
+
+# Add animation
+p_animate <- p + transition_reveal(year)
+
+# Render the animation
+animate(p_animate, end_pause = 50, height = 400, width = 600)
+
+```
+```
+
