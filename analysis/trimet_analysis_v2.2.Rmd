@@ -1,5 +1,6 @@
 ---
 title: "trimet_analysis_v2.2"
+author: Karol Orozco, Corey Cassell, Justus Eaglesmith, Charles Hanks, & CorDarryl Hall
 output: html_document
 date: "2023-07-05"
 ---
@@ -20,16 +21,14 @@ library(sf)
 library(skimr)
 
 library(gganimate)
-
-
+library(lubridate)
 ```
-
 
 
 
 Dataset: 
 ```{r}
-df3 = read_rds('https://raw.githubusercontent.com/karolo89/capstone/main/data/df_spatial_clean.rds')
+df3 = read_rds('/Users/chanks/workspace/capstone/data/df_spatial_clean.rds')
 ```
 
 ## TIME ANALYSIS 
@@ -67,5 +66,339 @@ p_animate <- p + transition_reveal(year)
 animate(p_animate, end_pause = 50, height = 400, width = 600)
 
 ```
+
+Clearly significant results in the year 2022. This will be the year we focus on to prime our analysis. Lets look at by location per year.
+
+# By Location
+```{r}
+# Group data by year and location, and count the number of incidents
+df_grouped <- df3 %>%
+  group_by(year, location) %>%
+  summarise(incident_count = n(), .groups = "drop")
+
+# Filter to top 10 locations by total incidents
+top_locations <- df_grouped %>% 
+  group_by(location) %>% 
+  summarise(total_incidents = sum(incident_count), .groups = "drop") %>% 
+  top_n(10, total_incidents) %>% 
+  pull(location)
+
+df_grouped <- df_grouped %>%
+  filter(location %in% top_locations)
+
+# Create ggplot object
+p <- ggplot(df_grouped, aes(x = year, y = incident_count, color = location)) +
+  geom_line(size = 1) +
+  geom_point(data = subset(df_grouped, year == 2022), colour = "red", size = 4, shape = 4) +
+  labs(
+    title = "Change in Number of Incidents Over Time",
+    x = "Year",
+    y = "Number of Incidents",
+    color = "Location"
+  ) +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  scale_y_log10() +
+  geom_text(
+    data = subset(df_grouped, year == 2022),
+    aes(label = ifelse(year == 2022, as.character(incident_count), "")),
+    vjust = -.5,
+    hjust = 0.5,
+    size = 4,
+    colour = "red"
+  )
+# Add animation
+p_animate <- p + transition_reveal(year)
+
+# Render the animation
+animate(p_animate, end_pause = 50, height = 400, width = 600)
+
 ```
+Appears that most of the incidents are occurring at Gateway, and Rose Quarter last year with some deviation between the top 3-5 following. Lets look to see if there is a trend with specific seasons/months.
+
+```{r}
+# Filter original dataframe to include only rows from the year 2022
+df_2022 <- df3 %>%
+  filter(year == 2022)
+
+# Assign a 'season' column to df_2022
+df_2022 <- df_2022 %>%
+  mutate(season = case_when(
+    month %in% c(12, 1, 2) ~ "Winter",
+    month %in% 3:5 ~ "Spring",
+    month %in% 6:8 ~ "Summer",
+    month %in% 9:11 ~ "Autumn",
+    TRUE ~ as.character(month)
+  ))
+
+
+# Assign a 'season' column to df_2022 based on 'month'
+df_2022 <- df_2022 %>%
+  mutate(season = case_when(
+    month %in% c("Dec", "Jan", "Feb") ~ "Winter",
+    month %in% c("Mar", "Apr", "May") ~ "Spring",
+    month %in% c("Jun", "Jul", "Aug") ~ "Summer",
+    month %in% c("Sep", "Oct", "Nov") ~ "Autumn",
+    TRUE ~ as.character(month)
+  ))
+```
+
+```{r}
+
+# Calculate the number of incidents per month
+df_sorted_2022 <- df_2022 %>%
+   group_by(month, season) %>%
+   summarise(incident_count = n(), .groups = "drop") %>%
+   arrange(month)
+
+# Calculate the average number of incidents per month
+df_avg_2022 <- df_2022 %>%
+  group_by(month) %>%
+  summarise(avg_incident_count = n(), .groups = "drop") %>%
+  arrange(month)
+
+# Plotting the bar plot with the trendline
+# Define a color palette
+color_palette <- c("Winter" = "#1f78b4", "Spring" = "#33a02c", "Summer" = "#e31a1c", "Autumn" = "#ff7f00")
+
+ggplot(df_sorted_2022, aes(x = month, y = incident_count, fill = season)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = color_palette) +
+  labs(title = "Number of Incidents by Month in 2022", x = "Month", y = "Number of Incidents", fill = "Season") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5),
+        legend.position = "bottom") +
+  geom_line(data = df_avg_2022, aes(x = month, y = avg_incident_count, group = 1), 
+            color = "black", size = 1, inherit.aes = FALSE)
+```
+
+Appears to be a trend that in the warmer seasons incidents increase. Lets see if the statistics support this with a chi squared test of proportional independence.
+
+```{r}
+
+# Chi-square test for independence between month and incidents
+chisq_test_month <- chisq.test(table(df_2022$month))
+
+print(chisq_test_month)
+
+# Chi-square test for independence between season and incidents
+chisq_test_season <- chisq.test(table(df_2022$season))
+
+print(chisq_test_season)
+
+```
+```{r}
+# Extract standardized residuals
+stdres <- chisq_test_month$stdres
+names(stdres) <- month.abb
+
+# Print residuals
+print(stdres)
+
+# Highlight residuals greater than 2 in absolute value
+significant_months <- names(stdres)[abs(stdres) > 2]
+
+print(paste("Months with significantly different number of incidents than expected: ", paste(significant_months, collapse = ", ")))
+
+```
+
+The following months show statistical significance, specifically in that April, September, and October have less than expected incidents while Jan, & May-July have more than expected incidents. Lets see if there are trends within time of day.
+
+
+# GEO-SPATIAL ANALYSIS 
+
+```{r}
+
+options(tigris_use_cache = TRUE)
+
+this.year = 2020
+
+mult_tracts = tracts(state = 'OR', county = "Multnomah", cb = T, year = this.year)
+clack_tracts = tracts(state = 'OR', county = "Clackamas", cb = T, year = this.year)
+wash_tracts = tracts(state = 'OR', county = "Washington", cb = T, year = this.year)
+
+tri_county_tracts = bind_rows(mult_tracts,clack_tracts,wash_tracts)
+```
+
+Map of incidents in 2022: 
+
+```{r}
+ggplot() +
+  geom_sf(data = tri_county_tracts) +
+  geom_point(data = df3 %>% filter(year == 2022), aes(x = lon, y = lat), color = 'red', alpha = .05, size =.5) + 
+  coord_sf(xlim = c(-123.1, -122.4), ylim = c(45.45, 45.6), expand = TRUE) + 
+  theme(legend.position = "none")
+ 
+```
+```{r}
+incident_per_tract_2022= df3 %>% filter(year == 2022) %>% group_by(tractce) %>%
+  count() %>% left_join(df3 %>% select(tractce, namelsadco, geometry.y), by = "tractce") 
+
+choropleth = function(subset){
+ggplot(subset) +
+  geom_sf(aes(geometry = geometry.y, fill = log(n))) + # logging n to condense the scale to show more variation 
+  scale_fill_gradient(
+      low = "white",
+      high = "darkred",
+      na.value = "grey50") +
+  coord_sf(xlim = c(-123.1, -122.4), ylim = c(45.3, 45.7)) + 
+  labs(title = "Trimet Security Incident Hotspots, 2022") 
+}
+
+choropleth(incident_per_tract_2022)
+```
+
+```{r}
+metro_2022 = df3 %>% filter(year == 2022) %>% group_by(location_id) %>% summarize(n = n())
+metro_2022 = inner_join(metro_2022, df3 %>% select(location_id, lon, lat) %>% distinct(), by = 'location_id')
+
+ggplot() +
+  geom_sf(data = tri_county_tracts) +
+  geom_point(data = metro_2022, aes(x = lon, y = lat, size = n, color = n, alpha = n)) + 
+  theme(legend.position = "none") + 
+  coord_sf(xlim = c(-123.1, -122.4), ylim = c(45.3, 45.7)) + 
+  scale_color_gradient(low = 'pink', high = 'darkred') + 
+  labs(title = "Number of security incidents in 2022, by location_id")
+
+metro_2022 %>% arrange(desc(n)) #10864 had 350 incidents, by far the most 
+
+df3 %>% filter(location_id == "10864") %>% head(n = 1) %>% select(location) # Gateway Transit Center 
+```
+Gateway Transit center is by far the place with most security incidents in 2022. 
+
+What stops are the other 4 stops with the most security incidents in 2022? 
+```{r}
+top5_2022 = metro_2022 %>% arrange(desc(n)) %>% head(n =5) #10864 had 350 incidents, by far the most 
+
+inner_join(top5_2022,df3 %>% select(location_id,location), by = 'location_id') %>% group_by(location_id,n) %>% distinct(location) %>% tail(n =5)
+```
+The other stops with the most security incidents are: 
+
+Elmonica / SW 170th Ave MAX Station 
+Hollywood/NE 42nd Ave TC 
+Beaverton TC MAX Station 
+Rose Quarter TC MAX Station
+
+It does make sense that the MAX would have more security incidents, as they hold more people, often have less supervision on the cars, and they offer shelter / seclusion. It will be interesting to see what _types_ of incidents occur the most at these sites. 
+
+Is this trend for Gateway TC true for other years? Does it match the overall trend in the system in the same time frame? 
+
+```{r}
+gateway_tc = df3 %>% filter(location_id == 10864)
+gateway_tc %>% group_by(year) %>% count() %>% ggplot() + geom_col(aes(x = year, y = n)) # this is a familiar pattern...
+
+df3 = df3 %>% mutate(is_gateway = ifelse(location_id == 10864, 1,0))
+
+df3 %>% group_by(year, is_gateway) %>% count() %>% ggplot() + geom_col(aes(x = year, y = n, fill = factor(is_gateway, levels = c(0,1)))) + 
+  guides(fill = guide_legend(title = "Is Gateway TC"))
+
+
+```
+The Gateway Transit Center is the leader in incidents, and the distribution follows the overall pattern of incidents across time. 
+
+```{r}
+gateway_year_counts = gateway_tc  %>% group_by(year) %>% count()       
+df3_year_counts = df3 %>% filter(is_gateway == 0) %>% group_by(year) %>% count()
+
+cor(gateway_year_counts$n,df3_year_counts$n) #
+```
+
+There is a strong correlation between security incidents across metro area and incidents at Gateway TC. 
+
+In 2022, which tracts had more than 100 security incidents in that year ? 
+
+```{r}
+top15_tracts_2022 = incident_per_tract_2022 %>% filter(n >= 100) %>% distinct(tractce) %>% inner_join(df3 %>% filter(year == 2022), top15_tracts_2022, by = "tractce") 
+
+#let's plot these events on the map 
+ggplot() +
+  geom_sf(data = tri_county_tracts) +
+  geom_point(data = top15_tracts_2022 %>% group_by(location_id) %>% summarize(n = n(), lon, lat) %>% distinct(n, lon, lat), 
+             aes(x = lon, y = lat, size = n), color = 'blue', alpha = .5) +
+  coord_sf(xlim = c(-122.85, -122.4), ylim = c(45.425, 45.6)) + 
+  theme(legend.position = "none") 
+
+#this basically shows where each max line stops.
+```
+Top 15 tracts 
+```{r}
+unique(top15_tracts_2022$tractce)
+```
+
+
+
+It appears that it is the Red and Blue MAX lines play a big role in the incident numbers. Within these tracts, if we take out the MAX related security incidents, are they still high-incident areas? 
+```{r}
+df3 %>% filter(tractce %in% top15_tracts_2022$tractce & year == 2022 & type != 'MAX') %>% group_by(tractce) %>% count() %>% arrange(desc(n))
+
+df3 %>% filter(tractce %in% top15_tracts_2022$tractce & year == 2022 ) %>% group_by(tractce) %>% count() %>% arrange(desc(n))
+
+```
+How many different routes intersect around Gateway TC ? 
+```{r}
+df3 %>% filter(tractce == '008100') %>% group_by(route_number) %>% summarize(n = n()) %>% drop_na() %>% nrow()
+```
+
+Looking at where incidents occurred May - July, 2022: 
+```{r}
+df_may_jul_2022 = df3 %>% filter(date >= "2022-01-05" & date <= "2022-07-31") %>% group_by(location_id) %>% summarize(n = n()) %>% arrange(desc(n))
+
+df_may_jul_2022 = inner_join(df_may_jul_2022, df3 %>% select(location_id,stop_name, lon, lat) %>% distinct(), by = 'location_id')
+
+```
+
+Plot: 
+```{r}
+ggplot() +
+  geom_sf(data = tri_county_tracts) +
+  geom_point(data = df_may_jul_2022, aes(x = lon, y = lat, size = n, color = n, alpha = n)) + 
+  theme(legend.position = "none") + 
+  coord_sf(xlim = c(-123.1, -122.4), ylim = c(45.3, 45.7)) + 
+  scale_color_gradient(low = 'pink', high = 'darkred') + 
+  labs(title = "Security incidents, May-Jul 2022")
+```
+
+Does this observation hold during April, September, and October (fewer than expected incidents?)
+```{r}
+df_apr_sep_oct_2022 = df3 %>% filter(month %in% c("Apr", "Sep", "Oct")) %>% group_by(location_id) %>% summarize(n = n()) %>% arrange(desc(n)) # yes 
+
+
+```
+
+# We recommend examining the characteristics of the security incidents at Gateway Transit Center. It would appear that by proposing interventions at this location in the transit system, we could see the greatest effect on reducing security incidents.
+
+Gateway TC is within tract 008100
+The Gateway TC `location_id` is 10864
+
+```{r}
+df3 %>% filter(tractce == '008100' & year == 2022)
+```
+
+### Connections
+MAX Blue Line
+MAX Green Line
+MAX Red Line
+15-Belmont/NW 23rd
+19-Woodstock/Glisan
+22-Parkrose
+23-San Rafael
+24-Fremont
+25-Glisan/Rockwood
+87-Airport Way/181st
+Columbia Area Transit
+Columbia Gorge Express (Seasonal)
+
+### Amenities
+Park & Ride
+Car sharing
+Accessible to people with mobility devices
+Ticket vending machine (credit/debit cards accepted)
+Bike racks and lockers available
+10-minute “Quick Drop” parking spaces for easy loading and unloading of passengers
+Transit Tracker™ sign with MAX arrival countdown
+Coffee Max: coffee, hot dogs and beverages during weekday commute hours
+
+
+
+
 
