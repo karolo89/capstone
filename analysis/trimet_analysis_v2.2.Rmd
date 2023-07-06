@@ -482,12 +482,12 @@ route_mapper(290)
 ```
 Adding Max color col to dataset 
 ```{r}
-df3 = df3 %>% mutate(max_line = case_when(
+df3 = df3 %>% mutate(max_line = factor(case_when(
                               route_number == 100 ~ "blue", 
                               route_number == 200 ~ "green", 
                               route_number == 190 ~ "yellow", 
                               route_number == 90 ~ "red", 
-                              route_number == 290 ~ "orange"))
+                              route_number == 290 ~ "orange")))
 ```
 
 
@@ -519,8 +519,70 @@ df3 %>% group_by(incident_subtype_code_list) %>% count()
 
 ```
 
-All `incident_type_code_list` rows have ASST, which means they are security incidents. This column doees not have value for us. 
+Where are the fights happening ? 
+
+Downtown, Rose Quarter, and along the east side of the MAX Blue Line 
+
 ```{r}
-df3 %>% group_by(incident_type_code_list) %>% count()
+ggplot() +
+  geom_sf(data = tri_county_tracts) +
+  geom_point(data = df3 %>% filter(incident_subtype_code_list == 'FIGHT') , aes(x = lon, y = lat), color = 'red', alpha = .05, size =.5) + 
+  coord_sf(xlim = c(-122.7, -122.5), ylim = c(45.45, 45.6), expand = TRUE) + 
+  theme(legend.position = "none",
+        )
 ```
+How about Vandalism 
+```{r}
+ggplot() +
+  geom_sf(data = tri_county_tracts) +
+  geom_point(data = df3 %>% filter(incident_subtype_code_list == 'VANDAL'), aes(x = lon, y = lat), color = 'red', alpha = .05, size =.5) + 
+  coord_sf(xlim = c(-123.1, -122.4), ylim = c(45.45, 45.6), expand = TRUE) + 
+  theme(legend.position = "none")
+
+df3_known_subtypes = df3 %>% filter(!is.na(incident_subtype_code_list))
+```
+
+Weapon-related incidents: 
+```{r}
+ggplot() +
+  geom_sf(data = tri_county_tracts) +
+  geom_point(data = df3 %>% filter(incident_subtype_code_list == 'TRESPASS') , aes(x = lon, y = lat), color = 'red', alpha = .05, size =.5) + 
+  coord_sf(xlim = c(-123.1, -122.4), ylim = c(45.45, 45.6), expand = FALSE) + 
+  theme(legend.position = "none") 
+```
+
+During what hour do most security incidents occur on the blue line ? 7 pm 
+
+```{r}
+df3 %>% filter(max_line == "blue") %>% 
+  group_by(hour) %>% summarize(n = n()) %>% ggplot(aes(x = hour, y = n)) + geom_line(color = "blue") + labs(title = "The most incidents occur between 7 and 8 pm")
+```
+
+Does this change according to season? 
+```{r}
+df3 = df3 %>% mutate(season = case_when(
+    month %in% c("Dec", "Jan", "Feb") ~ "Winter",
+    month %in% c("Mar", "Apr", "May") ~ "Spring",
+    month %in% c("Jun", "Jul", "Aug") ~ "Summer",
+    month %in% c("Sep", "Oct", "Nov") ~ "Autumn",
+    TRUE ~ as.character(month)
+  ))
+
+df3 %>% filter(max_line == "blue") %>% 
+  group_by(hour, season) %>% summarize(n = n()) %>% ggplot(aes(x = hour, y = n)) + geom_line(color = "blue") + facet_wrap(~season) + labs(title = "Incidents peak between 5 and 8 pm on the MAX Blue Line")
+```
+Looks like evening, 5 - 8 pm is when the most activity occurs on MAX Blue line. 
+
+How about for the whole system? 
+```{r}
+df3 %>% group_by(hour, season) %>% summarize(n = n()) %>% ggplot(aes(x = hour, y = n)) + geom_line(color = "black") + facet_wrap(~season)
+```
+Do MAX lines have different peak incident hours? 
+
+```{r}
+df3 %>% filter(!is.na(max_line)) %>% 
+  group_by(hour, max_line) %>% summarize(n = n()) %>% ggplot(aes(x = hour, y = n)) + geom_line(aes(color = max_line)) + facet_wrap(~max_line) + scale_color_manual(values = c("blue", "green", "orange", "red", "yellow"))
+```
+ 
+
 
