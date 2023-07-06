@@ -264,6 +264,40 @@ metro_2022 %>% arrange(desc(n)) #10864 had 350 incidents, by far the most
 
 df3 %>% filter(location_id == "10864") %>% head(n = 1) %>% select(location) # Gateway Transit Center 
 ```
+
+```{r}
+ggplot() +
+  geom_sf(data = tri_county_tracts) +
+  geom_point(data = metro_2022, aes(x = lon, y = lat, size = n, color = n, alpha = n)) + 
+  theme(legend.position = "none") + 
+  coord_sf(xlim = c(-123.1, -122.4), ylim = c(45.3, 45.7)) + 
+  scale_color_gradient(low = 'pink', high = 'darkred') + 
+  labs(title = "Number of security incidents in 2022, by location_id")
+```
+
+```{r}
+
+incident_per_tract_2022_2= df3 %>% filter(year == 2022) %>% group_by(tractce) %>%
+  count() %>% left_join(df3 %>% select(tractce, namelsadco, geometry.y), by = "tractce") 
+
+
+
+library(cartogram)
+
+carto_data = incident_per_tract_2022_2 %>% distinct()  %>%  st_as_sf() 
+
+carto_data = st_transform(carto_data, 3857)
+
+cartog_cont = cartogram_cont(carto_data, weight = "n")
+
+ggplot(cartog_cont) + geom_sf(aes(fill = n)) + labs(title = "Cartogram of Tracts with most Incidents in 2022") # Gateway, Rose Quarter, Downtown 
+```
+
+
+
+
+
+
 Gateway Transit center is by far the place with most security incidents in 2022. 
 
 What stops are the other 4 stops with the most security incidents in 2022? 
@@ -399,6 +433,94 @@ Transit Tracker™ sign with MAX arrival countdown
 Coffee Max: coffee, hot dogs and beverages during weekday commute hours
 
 
+Which routes had the most security incidents in 2022 ? 
+```{r}
+unique(df3$route_number)
+
+df3 %>% filter(type == 'MAX') %>% group_by(route_number) %>% count() %>% arrange(desc(n))
 
 
+```
+
+I cannot locate which routes (100, 200, 190, 925) are. I presume that these three digit route numbers are an internal code for the Max lines. I can filter the dataset and map the route stops to see which ones they are.  
+
+```{r}
+route_mapper = function(route){
+  ggplot() +
+  geom_sf(data = tri_county_tracts) +
+  geom_point(data = df3 %>% filter(route_number == route), aes(x = lon, y = lat), color = 'red', alpha = .05, size =.5) + 
+  coord_sf(xlim = c(-123.1, -122.4), ylim = c(45.45, 45.6), expand = TRUE) + 
+  theme(legend.position = "none")
+}
+```
+
+route 100 = BLUE LINE
+```{r}
+route_mapper(100)
+```
+route 200 = GREEN LINE 
+```{r}
+route_mapper(200)
+```
+route 190 = YELLOW LINE 
+```{r}
+route_mapper(190)
+```
+
+route 925 = Inconclusive
+```{r}
+route_mapper(925)
+```
+route 90 = RED 
+```{r}
+route_mapper(90)
+```
+
+route 290 = ORANGE LINE 
+```{r}
+route_mapper(290)
+```
+Adding Max color col to dataset 
+```{r}
+df3 = df3 %>% mutate(max_line = case_when(
+                              route_number == 100 ~ "blue", 
+                              route_number == 200 ~ "green", 
+                              route_number == 190 ~ "yellow", 
+                              route_number == 90 ~ "red", 
+                              route_number == 290 ~ "orange"))
+```
+
+
+## TYPE & SUBTYPE COLUMNS 
+```{r}
+subtype_breakdown = df3 %>% group_by(incident_subtype_code_list) %>% count() %>% arrange(desc(n)) # yikes, 37,436 are categorized as simply "NONE"
+
+37436/nrow(df3) #78 % of these incidents do not have a subtype, this is marginally better than the 82% OTHER subtype in first dataset 
+
+
+```
+
+
+Resolving `NONE` issue 
+```{r}
+df3 = df3 %>% mutate(incident_subtype_code_list = gsub("NONE","",incident_subtype_code_list)) %>% #removing the word "NONE"
+              mutate(incident_subtype_code_list = gsub("^\\s*$", NA, incident_subtype_code_list)) #changing empty rows to NA 
+
+#let's get rid of those pesky commas 
+df3 = df3 %>% mutate(incident_subtype_code_list = gsub(",","",incident_subtype_code_list)) %>% 
+  mutate(incident_subtype_code_list = gsub("\\s", NA, incident_subtype_code_list)) #some more whitespace to get rid of 
+  
+```
+
+
+What are the main subtypes we want to condense this subtype codes to ? 
+```{r}
+df3 %>% group_by(incident_subtype_code_list) %>% count()
+
+```
+
+All `incident_type_code_list` rows have ASST, which means they are security incidents. This column doees not have value for us. 
+```{r}
+df3 %>% group_by(incident_type_code_list) %>% count()
+```
 
