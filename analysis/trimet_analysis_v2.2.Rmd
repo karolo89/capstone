@@ -22,6 +22,7 @@ library(skimr)
 
 library(gganimate)
 library(lubridate)
+library(ggmap)
 ```
 
 
@@ -207,8 +208,9 @@ The following months show statistical significance, specifically in that April, 
 
 # GEO-SPATIAL ANALYSIS 
 
-```{r}
+Justus' analysis of the months shows during the months of May through July, there were higher than expected security incidents. Let us examine where these events occured. 
 
+```{r}
 options(tigris_use_cache = TRUE)
 
 this.year = 2020
@@ -220,18 +222,67 @@ wash_tracts = tracts(state = 'OR', county = "Washington", cb = T, year = this.ye
 tri_county_tracts = bind_rows(mult_tracts,clack_tracts,wash_tracts)
 ```
 
-Map of incidents in 2022: 
 
+
+Looking at where incidents occurred during peak period: May - July, 2022: 
 ```{r}
+df_may_jul_2022 = df3 %>% filter(date >= "2022-01-05" & date <= "2022-07-31") %>% group_by(location_id) %>% summarize(n = n()) %>% arrange(desc(n))
+
+df_may_jul_2022 = inner_join(df_may_jul_2022, df3 %>% select(location_id,stop_name, lon, lat, tractce, geometry.y) %>% distinct(), by = 'location_id')
+
+#bubble plot: 
+
 ggplot() +
   geom_sf(data = tri_county_tracts) +
-  geom_point(data = df3 %>% filter(year == 2022), aes(x = lon, y = lat), color = 'red', alpha = .05, size =.5) + 
-  coord_sf(xlim = c(-123.1, -122.4), ylim = c(45.45, 45.6), expand = TRUE) + 
-  theme(legend.position = "none")
- 
+  geom_point(data = df_may_jul_2022, aes(x = lon, y = lat, size = n, color = n, alpha = n)) + 
+  theme(legend.position = "none") + 
+  coord_sf(xlim = c(-123.1, -122.4), ylim = c(45.3, 45.7)) + 
+  scale_color_gradient(low = 'red', high = 'darkred') + 
+  labs(title = "Security incidents, May-Jul 2022")
 ```
+Plotting with ggmap
 ```{r}
-incident_per_tract_2022= df3 %>% filter(year == 2022) %>% group_by(tractce) %>%
+library(ggmap)
+library(osmdata)
+
+api_key = "AIzaSyBd4Q6cJzX1fFUhW2qgv6eWOztnZOcTuRk"
+register_google(key = api_key)
+
+portland_map = get_map(location = 'portland, or, usa', maptype = "roadmap", source = 'google', zoom = 10)
+
+ggmap(portland_map) + 
+  geom_point(data = df_may_jul_2022, aes(x = lon, y = lat, size = n, color = n, alpha = n)) + 
+  theme(legend.position = "none") + 
+  #coord_sf(xlim = c(-123.1, -122.4), ylim = c(45.3, 45.7)) + 
+  scale_color_gradient(low = 'lightpink', high = 'purple') + 
+  labs(title = "Security incidents, May-Jul 2022") + 
+  scale_x_continuous(limits = c(-123.1, -122.4), expand = c(0, 0)) +
+  scale_y_continuous(limits = c(45.3, 45.7), expand = c(0, 0))
+```
+
+Does this observation hold during April, September, and October (fewer than expected incidents?)
+```{r}
+df_apr_sep_oct_2022 = df3 %>% filter(month %in% c("Apr", "Sep", "Oct")) %>% group_by(location_id) %>% summarize(n = n()) %>% arrange(desc(n))   
+  
+  
+df_apr_sep_oct_2022=  inner_join(df_apr_sep_oct_2022, df3 %>% select(location_id,stop_name, lon, lat, tractce, geometry.y) %>% distinct(), by = 'location_id')
+
+ggplot() +
+  geom_sf(data = tri_county_tracts) +
+  geom_point(data = df_apr_sep_oct_2022, aes(x = lon, y = lat, size = n, color = n, alpha = n)) + 
+  theme(legend.position = "none") + 
+  coord_sf(xlim = c(-123.1, -122.4), ylim = c(45.3, 45.7)) + 
+  scale_color_gradient(low = 'red', high = 'darkred') + 
+  labs(title = "Security incidents, April, Sep, Oct 2022")
+
+
+```
+
+
+Choropleth to show hot spot areas in the city during the summer of 2022: 
+
+```{r}
+incident_per_tract_mjj_2022= df3 %>% filter(year == 2022 & month %in% c("May", "Jun", "Jul")) %>% group_by(tractce) %>%
   count() %>% left_join(df3 %>% select(tractce, namelsadco, geometry.y), by = "tractce") 
 
 choropleth = function(subset){
@@ -242,44 +293,61 @@ ggplot(subset) +
       high = "darkred",
       na.value = "grey50") +
   coord_sf(xlim = c(-123.1, -122.4), ylim = c(45.3, 45.7)) + 
-  labs(title = "Trimet Security Incident Hotspots, 2022") 
+  labs(title = "Trimet Security Incident Hotspots, May - July 2022") 
 }
 
-choropleth(incident_per_tract_2022)
+choropleth(incident_per_tract_mjj_2022)
 ```
 
-```{r}
-metro_2022 = df3 %>% filter(year == 2022) %>% group_by(location_id) %>% summarize(n = n())
-metro_2022 = inner_join(metro_2022, df3 %>% select(location_id, lon, lat) %>% distinct(), by = 'location_id')
 
-ggplot() +
-  geom_sf(data = tri_county_tracts) +
-  geom_point(data = metro_2022, aes(x = lon, y = lat, size = n, color = n, alpha = n)) + 
-  theme(legend.position = "none") + 
-  coord_sf(xlim = c(-123.1, -122.4), ylim = c(45.3, 45.7)) + 
-  scale_color_gradient(low = 'pink', high = 'darkred') + 
-  labs(title = "Number of security incidents in 2022, by location_id")
 
-metro_2022 %>% arrange(desc(n)) #10864 had 350 incidents, by far the most 
-
-df3 %>% filter(location_id == "10864") %>% head(n = 1) %>% select(location) # Gateway Transit Center 
-```
+Map of all security incidents in 2022: 
 
 ```{r}
 ggplot() +
   geom_sf(data = tri_county_tracts) +
-  geom_point(data = metro_2022, aes(x = lon, y = lat, size = n, color = n, alpha = n)) + 
-  theme(legend.position = "none") + 
-  coord_sf(xlim = c(-123.1, -122.4), ylim = c(45.3, 45.7)) + 
-  scale_color_gradient(low = 'pink', high = 'darkred') + 
-  labs(title = "Number of security incidents in 2022, by location_id")
+  geom_point(data = df3 %>% filter(year == 2022), aes(x = lon, y = lat), color = 'red', alpha = .05, size =.5) + 
+  coord_sf(xlim = c(-123.1, -122.4), ylim = c(45.45, 45.6), expand = TRUE) + 
+  theme(legend.position = "none")
+ 
 ```
+
+Interactive Choropleth of 2022 data using leaflet 
+```{r}
+library(leaflet)
+library(tidyverse)
+
+
+leaflet_data= incident_per_tract_2022 %>% distinct() %>% st_as_sf()
+
+pal = colorBin("YlOrRd", domain= leaflet_data$n, bins = c(0,50,100,150,200,250,300,350,400,450,500))
+
+labels = sprintf(
+  "<strong>%s</strong><br/>%g incidents",
+  leaflet_data$tractce, leaflet_data$n
+) %>% lapply(htmltools::HTML)
+
+leaflet() %>%
+  addProviderTiles("OpenStreetMap") %>% 
+  addPolygons(data = leaflet_data, 
+              fillColor = ~pal(n), 
+              weight = 1,  
+              opacity = 1,  
+              fillOpacity = 0.5, 
+              highlightOptions = highlightOptions(
+                weight = 5, 
+                color = "#666"), 
+              label = labels, 
+              labelOptions = labelOptions(style = list("font-weight" = "normal", padding = "3px 8px"),
+                textsize = "15px",
+                direction = "auto"))
+```
+
 
 ```{r}
 
 incident_per_tract_2022_2= df3 %>% filter(year == 2022) %>% group_by(tractce) %>%
   count() %>% left_join(df3 %>% select(tractce, namelsadco, geometry.y), by = "tractce") 
-
 
 
 library(cartogram)
@@ -294,11 +362,7 @@ ggplot(cartog_cont) + geom_sf(aes(fill = n)) + labs(title = "Cartogram of Tracts
 ```
 
 
-
-
-
-
-Gateway Transit center is by far the place with most security incidents in 2022. 
+## Gateway Transit center is by far the place with most security incidents in 2022. 
 
 What stops are the other 4 stops with the most security incidents in 2022? 
 ```{r}
@@ -373,31 +437,8 @@ How many different routes intersect around Gateway TC ?
 df3 %>% filter(tractce == '008100') %>% group_by(route_number) %>% summarize(n = n()) %>% drop_na() %>% nrow()
 ```
 
-Looking at where incidents occurred May - July, 2022: 
-```{r}
-df_may_jul_2022 = df3 %>% filter(date >= "2022-01-05" & date <= "2022-07-31") %>% group_by(location_id) %>% summarize(n = n()) %>% arrange(desc(n))
-
-df_may_jul_2022 = inner_join(df_may_jul_2022, df3 %>% select(location_id,stop_name, lon, lat) %>% distinct(), by = 'location_id')
-
-```
-
-Plot: 
-```{r}
-ggplot() +
-  geom_sf(data = tri_county_tracts) +
-  geom_point(data = df_may_jul_2022, aes(x = lon, y = lat, size = n, color = n, alpha = n)) + 
-  theme(legend.position = "none") + 
-  coord_sf(xlim = c(-123.1, -122.4), ylim = c(45.3, 45.7)) + 
-  scale_color_gradient(low = 'pink', high = 'darkred') + 
-  labs(title = "Security incidents, May-Jul 2022")
-```
-
-Does this observation hold during April, September, and October (fewer than expected incidents?)
-```{r}
-df_apr_sep_oct_2022 = df3 %>% filter(month %in% c("Apr", "Sep", "Oct")) %>% group_by(location_id) %>% summarize(n = n()) %>% arrange(desc(n)) # yes 
 
 
-```
 
 # We recommend examining the characteristics of the security incidents at Gateway Transit Center. It would appear that by proposing interventions at this location in the transit system, we could see the greatest effect on reducing security incidents.
 
@@ -509,7 +550,8 @@ df3 = df3 %>% mutate(incident_subtype_code_list = gsub("NONE","",incident_subtyp
 #let's get rid of those pesky commas 
 df3 = df3 %>% mutate(incident_subtype_code_list = gsub(",","",incident_subtype_code_list)) %>% 
   mutate(incident_subtype_code_list = gsub("\\s", NA, incident_subtype_code_list)) #some more whitespace to get rid of 
-  
+
+unique(df3$incident_subtype_code_list)
 ```
 
 
@@ -584,5 +626,26 @@ df3 %>% filter(!is.na(max_line)) %>%
   group_by(hour, max_line) %>% summarize(n = n()) %>% ggplot(aes(x = hour, y = n)) + geom_line(aes(color = max_line)) + facet_wrap(~max_line) + scale_color_manual(values = c("blue", "green", "orange", "red", "yellow"))
 ```
  
+
+
+
+Focusing on security incidents in 1 tract - lets do downtown 010602 
+
+```{r}
+tract_010602_2022 = df3 %>% filter(year == 2022 & tractce == '010602') %>% select(-geometry.x) %>% st_as_sf() 
+
+leaflet() %>%
+  addProviderTiles("OpenStreetMap") %>% 
+  addPolygons(data = tract_010602_2022, 
+              fillColor = "none") %>% 
+  addMarkers(data = tract_010602_2022, lng = ~lon, lat  = ~lat)
+
+?addMarkers()
+
+tract_010602_2022$lon
+
+```
+
+
 
 

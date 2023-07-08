@@ -1,0 +1,102 @@
+---
+title: "Untitled"
+output: html_document
+date: "2023-07-08"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+transit center shapefile
+```{r}
+shape = read_sf(dsn = '/Users/chanks/workspace/capstone/data/shapefiles/tm_tran_cen', 
+                layer = 'tm_tran_cen')
+
+shape_coords = st_transform(shape,"+proj=longlat +ellps=WGS84 +datum=WGS84") %>% st_coordinates()
+
+shape = bind_cols(shape, shape_coords) %>% rename(lat = Y, lon = X)
+```
+
+Creating a route max of max blue line 
+```{r}
+shape2 = read_sf(dsn = '/Users/chanks/workspace/capstone/data/shapefiles/tm_route_stops', 
+                layer = 'tm_route_stops')
+
+shape2_coords = st_transform(shape2,"+proj=longlat +ellps=WGS84 +datum=WGS84") %>% st_coordinates()
+
+shape2 = bind_cols(shape2, shape2_coords) %>% rename(lat = Y, lon = X)
+
+
+```
+
+```{r}
+max_blue = shape2 %>% filter(rte == 100)
+```
+
+```{r}
+ggplot() + geom_sf(data = tri_county_tracts) + 
+          #geom_sf(data = max_blue, color = "blue", size = 1) + 
+          geom_line(data = max_blue, aes(x = lon, y = lat), color = 'blue', size = 1 ) + 
+          labs(title =  "TriMet MAX Blue Line") +
+          #geom_sf_text(data = shape, aes(label = name), size = 2, nudge_y = -.0002) + 
+          coord_sf(xlim=c(-123.1, -122.4), ylim = c(45.3,45.6)) 
+```
+
+Max Red Line 
+```{r}
+max_red =  shape2 %>% filter(rte == 90 & dir == 0) %>% arrange(stop_seq)
+
+ggplot() + geom_sf(data = tri_county_tracts) + 
+          geom_sf(data = max_red, color = "red", size = 1) + 
+          geom_path(data = max_red, aes(x = lon, y = lat), color = "red", size = 1) + 
+          labs(title =  "TriMet MAX Red Line") +
+          coord_sf(xlim=c(-122.9, -122.5), ylim = c(45.45,45.6)) 
+
+?geom_path()
+view(max_red)
+```
+
+Red and Blue 
+```{r}
+ggplot() + geom_sf(data = tri_county_tracts) + 
+          #geom_sf(data = max_blue, color = "blue", size = 1) + 
+          geom_path(data = max_red, aes(x = lon, y = lat), color = "red", size = 1, alpha = .5) + 
+           geom_path(data = max_blue, aes(x = lon, y = lat), color = "blue", size = 1, alpha = .5) +
+          labs(title =  "TriMet MAX Blue Line") +
+          coord_sf(xlim=c(-123.1, -122.4), ylim = c(45.3,45.6)) 
+```
+Now the rest of the max lines: yellow, orange, green 
+```{r}
+max_green = shape2 %>% filter(rte == 200 & dir == 0) %>% arrange(stop_seq)
+max_orange =  shape2 %>% filter(rte == 290 & dir == 0) %>% arrange(stop_seq)
+max_yellow = shape2 %>% filter(rte == 190 & dir == 0) %>% arrange(stop_seq)
+
+
+ggplot() + geom_sf(data = tri_county_tracts) + 
+          geom_path(data = max_red, aes(x = lon, y = lat), color = "red", size = 1, alpha = .5) + 
+          geom_path(data = max_blue, aes(x = lon, y = lat), color = "blue", size = 1, alpha = .5) +
+          geom_path(data = max_yellow, aes(x = lon, y = lat), color = "yellow", size = 1, alpha = .5) +
+          geom_path(data = max_orange, aes(x = lon, y = lat), color = "orange", size = 1, alpha = .5) +
+          geom_path(data = max_green, aes(x = lon, y = lat), color = "green", size = 1, alpha = .5) +
+          labs(title =  "TriMet MAX Lines") +
+          coord_sf(xlim=c(-123.01, -122.38), ylim = c(45.40,45.6)) 
+```
+
+now to plot these routes with the transit centers: 
+
+```{r}
+ggplot() + geom_sf(data = tri_county_tracts) + 
+          geom_point(data = shape %>% filter(!city %in% c("Lake Oswego","Tigard", "Oregon City") & !str_detect(name, "Barbur")), aes(x = lon, y = lat), color = "black", size = 3, shape = 17 ) + 
+          geom_path(data = max_red, aes(x = lon, y = lat), color = "red", size = 1, alpha = .5) + 
+          geom_path(data = max_blue, aes(x = lon, y = lat), color = "blue", size = 1, alpha = .5) +
+          geom_path(data = max_yellow, aes(x = lon, y = lat), color = "yellow", size = 1, alpha = .5) +
+          geom_path(data = max_orange, aes(x = lon, y = lat), color = "orange", size = 1, alpha = .5) +
+          geom_path(data = max_green, aes(x = lon, y = lat), color = "green", size = 1, alpha = .5) +
+          labs(title =  "TriMet MAX System") +
+          coord_sf(xlim=c(-123.1, -122.4), ylim = c(45.40,45.6)) 
+```
+```{r}
+shape %>% filter(lat <= 45.46 )
+```
+
