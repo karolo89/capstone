@@ -337,19 +337,14 @@ We see a band of high-incident areas across the city, east to west. Given that t
 
 Loading MAX data: 
 ```{r}
-shape2 = read_sf(dsn = '/Users/chanks/workspace/capstone/data/shapefiles/tm_route_stops', 
-                layer = 'tm_route_stops')
-
-shape2_coords = st_transform(shape2,"+proj=longlat +ellps=WGS84 +datum=WGS84") %>% st_coordinates()
-
-shape2 = bind_cols(shape2, shape2_coords) %>% rename(lat = Y, lon = X)
+max_data = read_rds('https://raw.githubusercontent.com/karolo89/capstone/main/data/max_data.rds')
 
 #subsetting each max line data
-max_blue = shape2 %>% filter(rte == 100 & dir == 0) %>% arrange(stop_seq)
-max_red =  shape2 %>% filter(rte == 90 & dir == 0) %>% arrange(stop_seq)
-max_green = shape2 %>% filter(rte == 200 & dir == 0) %>% arrange(stop_seq)
-max_orange =  shape2 %>% filter(rte == 290 & dir == 0) %>% arrange(stop_seq)
-max_yellow = shape2 %>% filter(rte == 190 & dir == 0) %>% arrange(stop_seq)
+max_blue = max_data %>% filter(rte == 100 & dir == 0) %>% arrange(stop_seq)
+max_red =  max_data %>% filter(rte == 90 & dir == 0) %>% arrange(stop_seq)
+max_green = max_data %>% filter(rte == 200 & dir == 0) %>% arrange(stop_seq)
+max_orange =  max_data %>% filter(rte == 290 & dir == 0) %>% arrange(stop_seq)
+max_yellow = max_data %>% filter(rte == 190 & dir == 0) %>% arrange(stop_seq)
 
 df3 = df3 %>% mutate(max_line = factor(case_when(
                               route_number == 100 ~ "blue", 
@@ -358,7 +353,7 @@ df3 = df3 %>% mutate(max_line = factor(case_when(
                               route_number == 90 ~ "red", 
                               route_number == 290 ~ "orange")))
 
-write_rds(shape2, file = 'max_data.rds')
+
 
 ```
 
@@ -400,7 +395,7 @@ From this visualization it is clear that the security incident hot spots are alo
 
 Which MAX routes had the most security incidents ? 
 ```{r}
-df3 %>% filter(type == 'MAX') %>% group_by(route_number) %>% count() %>% arrange(desc(n))
+df3 %>% filter(type == 'MAX') %>% group_by(route_number, max_line) %>% count() %>% arrange(desc(n))
 
 ```
 During what hour do most security incidents occur on the blue line ?  
@@ -408,6 +403,28 @@ During what hour do most security incidents occur on the blue line ?
 ```{r}
 df3 %>% filter(max_line == "blue") %>% 
   group_by(hour) %>% summarize(n = n()) %>% ggplot(aes(x = hour, y = n)) + geom_line(color = "blue") + labs(title = "The most incidents occur between 7 and 8 pm")
+```
+During this peak time, where are these incidents occuring?  
+
+```{r}
+
+blue_7pm = df3 %>% filter(max_line == "blue" & hour == 19) %>% count(location_id) %>% inner_join(df3 %>% select(location_id,location, lon, lat), by = "location_id") %>% distinct(location_id, n, lon, lat) %>% arrange(desc(n)) %>% head(n = 5) %>% distinct(location_id, n, lon, lat)
+
+
+ggplot() + 
+  geom_sf(data = tri_county_tracts) +
+  geom_point(data = blue_7pm, aes(x = lon, y = lat, size = n), color = 'red', alpha = .5, ) + 
+  coord_sf(xlim = c(-123.1, -122.4), ylim = c(45.3, 45.6)) + 
+  theme(legend.position = "none")
+
+
+
+```
+```{r}
+blue_7p_tract = df3 %>% filter(max_line == "blue" & hour == 19) %>% count(tractce) %>% inner_join(df3 %>% select(tractce, geometry.y), by = "tractce") %>% distinct(tractce, n, geometry.y)
+
+choropleth(blue_7p_tract)
+
 ```
 
 
