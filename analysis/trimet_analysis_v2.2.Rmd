@@ -743,5 +743,14 @@ df3 %>% filter(night_time == 1) %>%
 
 ```
 
+Sleepers 
+
+```{r}
+df3 %>% filter(str_detect(comments, "[Ss]leep"))
 
 
+df3 = df3 %>% mutate(sleeper = ifelse(str_detect(comments, "[Ss]leeper"), 1, 0))
+df3 %>% filter(sleeper == 1) %>% group_by(location) %>% count() %>% arrange(desc(n))
+```
+
+Most sleepers found in gresham. 
