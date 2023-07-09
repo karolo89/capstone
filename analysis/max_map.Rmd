@@ -96,7 +96,88 @@ ggplot() + geom_sf(data = tri_county_tracts) +
           labs(title =  "TriMet MAX System") +
           coord_sf(xlim=c(-123.1, -122.4), ylim = c(45.40,45.6)) 
 ```
+Now we have to add our security data layer to make this actually insightful: 
+
 ```{r}
-shape %>% filter(lat <= 45.46 )
+ggplot() +
+  geom_sf(data = tri_county_tracts) +
+  geom_point(data = top15_tracts_2022 %>% group_by(location_id) %>% summarize(n = n(), lon, lat) %>% distinct(n, lon, lat), 
+             aes(x = lon, y = lat, size = n), color = 'blue', alpha = .5) +
+  geom_path(data = max_red, aes(x = lon, y = lat), color = "red", size = 1, alpha = .5) + 
+  geom_path(data = max_blue, aes(x = lon, y = lat), color = "blue", size = 1, alpha = .5) +
+  geom_path(data = max_yellow, aes(x = lon, y = lat), color = "yellow", size = 1, alpha = .5) +
+  geom_path(data = max_orange, aes(x = lon, y = lat), color = "orange", size = 1, alpha = .5) +
+  geom_path(data = max_green, aes(x = lon, y = lat), color = "green", size = 1, alpha = .5) +
+  labs(title =  "TriMet MAX System") +
+  coord_sf(xlim=c(-123.1, -122.4), ylim = c(45.40,45.6)) +
+  theme(legend.position = "none") 
 ```
 
+Adding chloropleth layer to map 
+```{r}
+incident_per_tract_2022= df3 %>% filter(year == 2022) %>% group_by(tractce) %>%
+  count() %>% left_join(df3 %>% select(tractce,namelsadco, geometry.y), by = "tractce") %>% distinct()
+
+ggplot() +
+  geom_sf(data = incident_per_tract_2022, aes(geometry = geometry.y, fill = log(n)), alpha = .7) + # logging n to condense the scale to show more variation 
+  geom_path(data = max_red, aes(x = lon, y = lat), color = "red", size = 1, alpha = .5) + 
+  geom_path(data = max_blue, aes(x = lon, y = lat), color = "blue", size = 1, alpha = .5) +
+  geom_path(data = max_yellow, aes(x = lon, y = lat), color = "yellow", size = 1, alpha = .5) +
+  geom_path(data = max_orange, aes(x = lon, y = lat), color = "orange", size = 1, alpha = .5) +
+  geom_path(data = max_green, aes(x = lon, y = lat), color = "green", size = 1, alpha = .5) + 
+  scale_fill_gradient(
+      low = "white",
+      high = "darkred",
+      na.value = "grey50") +
+   coord_sf(xlim=c(-123.1, -122.4), ylim = c(45.40,45.6)) + 
+  labs(title = "Trimet Security Incident Hotspots, 2022") 
+```
+
+```{r}
+library(viridis)
+
+ggplot() +
+  geom_sf(data = incident_per_tract_2022, aes(geometry = geometry.y, fill = n), alpha = .7) +
+  geom_path(data = max_blue, aes(x = lon, y = lat), color = "dodgerblue", size = 1, alpha = .5) +
+  coord_sf(xlim =c(-123.1, -122.4), ylim = c(45.45,45.65)) + 
+  scale_fill_viridis()
+```
+
+```{r}
+library(ggplot2)
+library(ggmap)
+
+
+api_key = "AIzaSyBd4Q6cJzX1fFUhW2qgv6eWOztnZOcTuRk"
+register_google(key = api_key)
+
+portland_map = get_map(location = 'portland, or, usa', maptype = "roadmap", source = 'google', zoom = 10)
+# Define the bounding box for your plot
+bbox <- c(left = -123.1, bottom = 45.45, right = -122.4, top = 45.65)
+
+# Create the plot
+p = ggmap(portland_map)
+
+
+p + geom_point(data = df_may_jul_2022, aes(x = lon, y = lat)) +
+  geom_path(data = max_blue, aes(x = lon, y = lat), color = "blue", size = 1, alpha = 0.5) + 
+  xlim(-123.1, -122.4) + 
+  ylim(45.40,45.6)
+```
+
+
+```{r}
+p + 
+  geom_point(data = top15_tracts_2022 %>% group_by(location_id) %>% summarize(n = n(), lon, lat) %>% distinct(n, lon, lat), 
+             aes(x = lon, y = lat, size = n), color = 'purple', alpha = .5) +
+  geom_path(data = max_red, aes(x = lon, y = lat), color = "red", size = 1, alpha = .5) + 
+  geom_path(data = max_blue, aes(x = lon, y = lat), color = "blue", size = 1, alpha = .5) +
+  geom_path(data = max_yellow, aes(x = lon, y = lat), color = "yellow", size = 1, alpha = .5) +
+  geom_path(data = max_orange, aes(x = lon, y = lat), color = "orange", size = 1, alpha = .5) +
+  geom_path(data = max_green, aes(x = lon, y = lat), color = "green", size = 1, alpha = .5) +
+  labs(title =  "TriMet MAX System") +
+  xlim(-123.1, -122.4)+ 
+  ylim(45.40,45.6) +
+  theme(legend.position = "none") 
+```
+The most security incidents align with the MAX train routes. 

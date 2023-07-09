@@ -315,6 +315,7 @@ ggplot() +
 Interactive Choropleth of 2022 data using leaflet 
 ```{r}
 library(leaflet)
+library(leaflet.extras)
 library(tidyverse)
 
 
@@ -340,7 +341,15 @@ leaflet() %>%
               label = labels, 
               labelOptions = labelOptions(style = list("font-weight" = "normal", padding = "3px 8px"),
                 textsize = "15px",
-                direction = "auto"))
+                direction = "auto")) %>% 
+  addPolylines(data = max_blue, lng = ~lon, lat = ~lat, color = 'blue') %>% 
+  addPolylines(data = max_red, lng = ~lon, lat = ~lat, color = 'red') %>% 
+  addPolylines(data = max_yellow, lng = ~lon, lat = ~lat, color = 'yellow') %>% 
+  addPolylines(data = max_orange, lng = ~lon, lat = ~lat, color = 'orange')  %>% 
+  addPolylines(data = max_green, lng = ~lon, lat = ~lat, color = 'green') 
+
+
+?addPolylines()
 ```
 
 
@@ -432,6 +441,9 @@ df3 %>% filter(tractce %in% top15_tracts_2022$tractce & year == 2022 & type != '
 df3 %>% filter(tractce %in% top15_tracts_2022$tractce & year == 2022 ) %>% group_by(tractce) %>% count() %>% arrange(desc(n))
 
 ```
+Even not counting max related security incidents - tract 008100 (Gateway) is a big hot spot. 
+
+
 How many different routes intersect around Gateway TC ? 
 ```{r}
 df3 %>% filter(tractce == '008100') %>% group_by(route_number) %>% summarize(n = n()) %>% drop_na() %>% nrow()
@@ -557,7 +569,7 @@ unique(df3$incident_subtype_code_list)
 
 What are the main subtypes we want to condense this subtype codes to ? 
 ```{r}
-df3 %>% group_by(incident_subtype_code_list) %>% count()
+df3 %>% group_by(incident_subtype_code_list) %>% count() %>% arrange(desc(n))
 
 ```
 
@@ -626,9 +638,6 @@ df3 %>% filter(!is.na(max_line)) %>%
   group_by(hour, max_line) %>% summarize(n = n()) %>% ggplot(aes(x = hour, y = n)) + geom_line(aes(color = max_line)) + facet_wrap(~max_line) + scale_color_manual(values = c("blue", "green", "orange", "red", "yellow"))
 ```
  
-
-
-
 Focusing on security incidents in 1 tract - lets do downtown 010602 
 
 ```{r}
@@ -640,12 +649,105 @@ leaflet() %>%
               fillColor = "none") %>% 
   addMarkers(data = tract_010602_2022, lng = ~lon, lat  = ~lat)
 
-?addMarkers()
-
-tract_010602_2022$lon
 
 ```
 
 
+Among the labeled subtypes, what sort of incidents occur at Gateway transit center, location ID 10864 ?
 
+```{r}
+gateway_incidents = df3 %>% filter(!is.na(incident_subtype_code_list)) %>% filter(year == 2022) %>%  filter(location_id == 10864) %>% group_by(incident_subtype_code_list) %>% count()
+
+sum(gateway_incidents$n) # 459 total incidents 
+
+gateway_incidents = gateway_incidents %>% arrange(desc(n)) %>%mutate(freq = n/43)
+```
+Trespassing, vehicle tow, vandalism, fights, and customer assault are the most common incidents at this stop. 
+
+
+How does this compare with the rest of the system? 
+
+```{r}
+df3 %>% filter(!is.na(incident_subtype_code_list)) %>% group_by(incident_subtype_code_list) %>% count() %>% arrange(desc(n)) 
+```
+
+Overall, the most frequent occurences are vandalism, trespressing, assault of customer, fight, and assault of employee.
+
+
+# Analysis of the NIGHT: 
+
+ASSUMPTION: The night is between 8 pm and 5 am: 
+```{r}
+df3 = df3 %>% mutate(night_time = factor(ifelse(hour >= 20 | hour <= 4, 1, 0))) #creating night time flag 
+
+df3 %>% group_by(night_time, season) %>% count()  %>% 
+            ggplot(aes(x = season, y = n, fill = night_time)) + geom_col() + facet_grid(~ night_time) + 
+            scale_discrete_manual(aesthetics = c("fill"), values = c("#FF7F7F", "#7F7FFF")) + labs(title = "# of Incidents, Day vs Night Per Season")
+```
+
+```{r}
+df3 %>% filter(year == 2023) %>% group_by(date, night_time) %>% count() %>%  ggplot(aes(x = date, y = n, fill = night_time))  + geom_point() + 
+  geom_smooth(method = 'lm', se = FALSE) + 
+  facet_grid(~night_time) + 
+  labs(title = "The number of night time incidents are decreasing in 2023")
+```
+
+What if we compare the same time interval, one year ago? 
+```{r}
+df3 %>% filter(year %in% c(2022,2023))%>%
+  filter((date >= "2022-01-01" & date <= "2022-05-16") | date >= "2023-01-01")%>% 
+  group_by(date,year, night_time) %>% count() %>%  ggplot(aes(x = date, y = n, color = night_time))  + geom_point() + 
+  geom_smooth(method = 'lm', se = FALSE, color = "black") + 
+  facet_grid(night_time~year) + 
+  theme_minimal() + labs(title = "Jan - May, 2022 vs 2023")
+```
+Nighttime incidents were trending upward in Jan - May 2022, and now they are trending downward Jan - May 2023. 
+
+Let's look at the whole year of 2022 see how many incidents were occuring at night: 
+```{r}
+df3 %>% filter(year == 2022 & night_time == 1) %>% group_by(date) %>% count() %>% 
+  ggplot(aes(x = date, y = n))  + geom_point() + 
+  geom_smooth(method = "loess")
+```
+
+The most incidents occur between 4 and 8 pm
+```{r}
+df3 %>%
+  group_by(hour) %>% summarize(n = n()) %>% ggplot(aes(x = hour, y = n)) + geom_line(color = "blue") + labs(title = "The most incidents occur between 7 and 8 pm")
+
+df3 %>% group_by(hour) %>% summarize(n = n()) %>% arrange(desc(n))
+```
+
+
+What part of the system is most dangerous between the hours of 8 pm and 5 am ? 
+Where are the most incidents occurring at night? Downtown, Rose Quarter, Gateway, Downtown 2
+
+```{r}
+df3 %>% filter(night_time == 1) %>%  
+  group_by(tractce) %>% 
+    count() %>% 
+      arrange(desc(n))
+
+```
+
+Where have the homicides occured? 
+
+
+Sleepers / riders without destination 
+```{r}
+
+```
+
+
+FINDINGS: 
+
+*  2022 had significantly higher security incidents than the previous years, following a overall increasing trend.
+*  Within that year, May through July has more activity, and April, Sep, and Oct had less.
+*  Given the convergence of multiple routes, transit centers are hotspots for security incidents
+*  Among the transit centers, Gateway Transit Center is a consistent hot spot, followed by Rose Quarter TC
+*  During each day, we see the most security incidents during the hours of 4 to 8 pm.
+*  Among all routes, the MAX Blue line is the most dangerous. 
+
+
+Creating features from `comments` column 
 

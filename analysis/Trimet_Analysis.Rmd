@@ -686,7 +686,7 @@ ggplot() + geom_sf(data = tri_county_tracts) +
           geom_sf(data = shape, color = "dodgerblue", size = 5) + 
           labs(title =  "TriMet Transit Centers") +
           #geom_sf_text(data = shape, aes(label = name), size = 2, nudge_y = -.0002) + 
-          coord_sf(xlim=c(-123.1, -122.4), ylim = c(45.3,45.6)) thi
+          coord_sf(xlim=c(-123.1, -122.4), ylim = c(45.3,45.6)) 
 
 
 
