@@ -181,3 +181,46 @@ p +
   theme(legend.position = "none") 
 ```
 The most security incidents align with the MAX train routes. 
+
+
+
+
+```{r}
+ggplot() +
+  geom_sf(data = tri_county_tracts) +
+  geom_point(data = df3 %>% filter(year == 2022), aes(x = lon, y = lat), color = 'red', alpha = .05, size =.5) + 
+  coord_sf(xlim = c(-123.1, -122.4), ylim = c(45.45, 45.6), expand = TRUE) + 
+  theme(legend.position = "none")
+```
+
+```{r}
+
+incident_per_tract_2022 = df3 %>% filter(year == 2022) %>% group_by(tractce) %>%
+  count() %>% left_join(df3 %>% select(tractce, namelsadco, geometry.y), by = "tractce") 
+
+
+library(cartogram)
+
+carto_data = incident_per_tract_2022_2 %>% distinct()  %>%  st_as_sf() 
+
+carto_data = st_transform(carto_data, 3857)
+
+cartog_cont = cartogram_cont(carto_data, weight = "n")
+
+ggplot(cartog_cont) + geom_sf(aes(fill = n)) + labs(title = "Cartogram of Tracts with most Incidents in 2022") # Gateway, Rose Quarter, Downtown 
+```
+
+```{r}
+top15_tracts_2022 = incident_per_tract_2022 %>% filter(n >= 100) %>% distinct(tractce) %>% inner_join(df3 %>% filter(year == 2022), top15_tracts_2022, by = "tractce") 
+
+#let's plot these events on the map 
+ggplot() +
+  geom_sf(data = tri_county_tracts) +
+  geom_point(data = top15_tracts_2022 %>% group_by(location_id) %>% summarize(n = n(), lon, lat) %>% distinct(n, lon, lat), 
+             aes(x = lon, y = lat, size = n), color = 'blue', alpha = .5) +
+  coord_sf(xlim = c(-122.85, -122.4), ylim = c(45.425, 45.6)) + 
+  theme(legend.position = "none") 
+
+#this basically shows where each max line stops.
+```
+

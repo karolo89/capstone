@@ -5,6 +5,20 @@ output: html_document
 date: "2023-07-05"
 ---
 
+I. Time Analysis 
+II. Location Analysis 
+III. Incident Analysis 
+
+FINDINGS: 
+
+*  2022 had significantly higher security incidents than the previous years, following a overall increasing trend.
+*  Within that year, May through July has more activity, and April, Sep, and Oct had less.
+*  Given the convergence of multiple routes, transit centers are hotspots for security incidents
+*  Among the transit centers, Gateway Transit Center is a consistent hot spot, followed by Rose Quarter TC
+*  During each day, we see the most security incidents during the hours of 4 to 8 pm.
+*  Among all routes, the MAX Blue line is the most dangerous. 
+
+
 
 Libraries: 
 ```{r}
@@ -19,20 +33,45 @@ library(RColorBrewer)
 library(tigris)
 library(sf)
 library(skimr)
+library(leaflet)
+library(leaflet.extras)
 
 library(gganimate)
 library(lubridate)
 library(ggmap)
 ```
 
-
-
 Dataset: 
 ```{r}
 df3 = read_rds('/Users/chanks/workspace/capstone/data/df_spatial_clean.rds')
 ```
 
-## TIME ANALYSIS 
+# I.  TIME ANALYSIS 
+
+First we examine how many security incidents occurred in each year and compare that the overall average per year. 
+
+```{r}
+df_year_counts <- df3 %>%
+  count(year) %>%
+  mutate(avg = mean(n),
+        yoy = (n / lag(n) - 1) * 100, # adding year-over-year change 
+         color = ifelse(n > avg, "Above Average", "Below Average"))
+
+ggplot(df_year_counts, aes(x = year, y = n, fill = color)) + 
+  geom_bar(stat = "identity", show.legend = FALSE) +
+  geom_hline(aes(yintercept = avg), linetype = "dashed", color = "black") +
+  scale_fill_manual(values = c("Above Average" = "#FF7F7F", "Below Average" = "#7F7FFF")) +
+  theme_minimal() +
+  labs(x = "Year", y = "Count", fill = "", title = "Number of Security Incidents Per Year") + 
+  geom_label(data = df_year_counts %>% filter(year == 2022), aes(x = year, y = n, label = paste0(round(yoy, 2), "% +")), nudge_x = -1, fill = "white")
+    
+?geom_label()
+```
+
+The incidents are increasing annually so it is important to get a handle on this. Especially considering 2022 had tremendously more results than 2021. 
+
+A better plot for this would be using a timeseries plot. 
+
 ```{r}
 # Group data by year only and count the number of incidents
 df_grouped <- df3 %>%
@@ -206,10 +245,11 @@ print(paste("Months with significantly different number of incidents than expect
 The following months show statistical significance, specifically in that April, September, and October have less than expected incidents while Jan, & May-July have more than expected incidents. Lets see if there are trends within time of day.
 
 
-# GEO-SPATIAL ANALYSIS 
+# II. LOCATION ANALYSIS 
 
-Justus' analysis of the months shows during the months of May through July, there were higher than expected security incidents. Let us examine where these events occured. 
+Our analysis of the months shows during the months of May through July, there were higher than expected security incidents. Let us examine where these events occurred. 
 
+Loading spatial data of Multnomah, Clackamas, and Washington counties:
 ```{r}
 options(tigris_use_cache = TRUE)
 
@@ -221,27 +261,18 @@ wash_tracts = tracts(state = 'OR', county = "Washington", cb = T, year = this.ye
 
 tri_county_tracts = bind_rows(mult_tracts,clack_tracts,wash_tracts)
 ```
-
-
-
 Looking at where incidents occurred during peak period: May - July, 2022: 
+
 ```{r}
-df_may_jul_2022 = df3 %>% filter(date >= "2022-01-05" & date <= "2022-07-31") %>% group_by(location_id) %>% summarize(n = n()) %>% arrange(desc(n))
+df_may_jul_2022 = df3 %>% 
+  filter(date >= "2022-01-05" & date <= "2022-07-31") %>% 
+  group_by(location, location_id) %>% 
+  summarize(n = n()) %>% arrange(desc(n))
 
-df_may_jul_2022 = inner_join(df_may_jul_2022, df3 %>% select(location_id,stop_name, lon, lat, tractce, geometry.y) %>% distinct(), by = 'location_id')
+df_may_jul_2022 = inner_join(df_may_jul_2022, df3 %>% 
+                  select(location_id, lon, lat, tractce, geometry.y) %>% 
+                  distinct(), by = 'location_id')
 
-#bubble plot: 
-
-ggplot() +
-  geom_sf(data = tri_county_tracts) +
-  geom_point(data = df_may_jul_2022, aes(x = lon, y = lat, size = n, color = n, alpha = n)) + 
-  theme(legend.position = "none") + 
-  coord_sf(xlim = c(-123.1, -122.4), ylim = c(45.3, 45.7)) + 
-  scale_color_gradient(low = 'red', high = 'darkred') + 
-  labs(title = "Security incidents, May-Jul 2022")
-```
-Plotting with ggmap
-```{r}
 library(ggmap)
 library(osmdata)
 
@@ -250,25 +281,27 @@ register_google(key = api_key)
 
 portland_map = get_map(location = 'portland, or, usa', maptype = "roadmap", source = 'google', zoom = 10)
 
-ggmap(portland_map) + 
+#bubble plot: 
+
+ggmap(portland_map) +
   geom_point(data = df_may_jul_2022, aes(x = lon, y = lat, size = n, color = n, alpha = n)) + 
   theme(legend.position = "none") + 
-  #coord_sf(xlim = c(-123.1, -122.4), ylim = c(45.3, 45.7)) + 
-  scale_color_gradient(low = 'lightpink', high = 'purple') + 
-  labs(title = "Security incidents, May-Jul 2022") + 
-  scale_x_continuous(limits = c(-123.1, -122.4), expand = c(0, 0)) +
-  scale_y_continuous(limits = c(45.3, 45.7), expand = c(0, 0))
+  coord_sf(xlim = c(-123.1, -122.4), ylim = c(45.3, 45.7)) + 
+  scale_color_gradient(low = 'red', high = 'darkred') + 
+  labs(title = "Security incidents, May-Jul 2022")
 ```
+In addition to Gateway, Hollywood, and the Rose Quarter, we can see that the Downtown Transit Mall has a high concentration of security incidents during this time period. 
 
-Does this observation hold during April, September, and October (fewer than expected incidents?)
+
+
+Does this observation hold during April, September, and October, where there were fewer than expected incidents?
 ```{r}
-df_apr_sep_oct_2022 = df3 %>% filter(month %in% c("Apr", "Sep", "Oct")) %>% group_by(location_id) %>% summarize(n = n()) %>% arrange(desc(n))   
+df_apr_sep_oct_2022 = df3 %>% filter(month %in% c("Apr", "Sep", "Oct")) %>% group_by(location, location_id) %>% summarize(n = n()) %>% arrange(desc(n))   
   
   
 df_apr_sep_oct_2022=  inner_join(df_apr_sep_oct_2022, df3 %>% select(location_id,stop_name, lon, lat, tractce, geometry.y) %>% distinct(), by = 'location_id')
 
-ggplot() +
-  geom_sf(data = tri_county_tracts) +
+ggmap(portland_map) +
   geom_point(data = df_apr_sep_oct_2022, aes(x = lon, y = lat, size = n, color = n, alpha = n)) + 
   theme(legend.position = "none") + 
   coord_sf(xlim = c(-123.1, -122.4), ylim = c(45.3, 45.7)) + 
@@ -277,6 +310,10 @@ ggplot() +
 
 
 ```
+Yes, with more incidents in the Gresham area. 
+
+
+Instead of view individual locations, let's examine how security incident are distributed by area.  
 
 
 Choropleth to show hot spot areas in the city during the summer of 2022: 
@@ -298,27 +335,111 @@ ggplot(subset) +
 
 choropleth(incident_per_tract_mjj_2022)
 ```
+We see a band of high-incident areas across the city, east to west. Given that the locations with the most incidents are at transit centers across this parallel, it appears that security incidents occur around the MAX routes. 
 
+Loading MAX data: 
+```{r}
+shape2 = read_sf(dsn = '/Users/chanks/workspace/capstone/data/shapefiles/tm_route_stops', 
+                layer = 'tm_route_stops')
 
+shape2_coords = st_transform(shape2,"+proj=longlat +ellps=WGS84 +datum=WGS84") %>% st_coordinates()
 
-Map of all security incidents in 2022: 
+shape2 = bind_cols(shape2, shape2_coords) %>% rename(lat = Y, lon = X)
+
+#subsetting each max line data
+max_blue = shape2 %>% filter(rte == 100 & dir == 0) %>% arrange(stop_seq)
+max_red =  shape2 %>% filter(rte == 90 & dir == 0) %>% arrange(stop_seq)
+max_green = shape2 %>% filter(rte == 200 & dir == 0) %>% arrange(stop_seq)
+max_orange =  shape2 %>% filter(rte == 290 & dir == 0) %>% arrange(stop_seq)
+max_yellow = shape2 %>% filter(rte == 190 & dir == 0) %>% arrange(stop_seq)
+
+df3 = df3 %>% mutate(max_line = factor(case_when(
+                              route_number == 100 ~ "blue", 
+                              route_number == 200 ~ "green", 
+                              route_number == 190 ~ "yellow", 
+                              route_number == 90 ~ "red", 
+                              route_number == 290 ~ "orange")))
+
+```
+
+Aggregating incident data for top 15 tracts: 
 
 ```{r}
+
+incident_per_tract_2022 = df3 %>% 
+  filter(year == 2022) %>% 
+  group_by(tractce) %>%
+  count() %>% 
+  left_join(df3 %>% select(tractce, namelsadco, geometry.y), by = "tractce") 
+
+
+top15_tracts_2022 = incident_per_tract_2022 %>% 
+  filter(n >= 100) %>% 
+  distinct(tractce) %>% 
+  inner_join(df3 %>% filter(year == 2022), top15_tracts_2022, by = "tractce") %>% 
+  group_by(location_id) %>% 
+  summarize(n = n(), lon, lat) %>% 
+  distinct(n, lon, lat)
+
+
 ggplot() +
   geom_sf(data = tri_county_tracts) +
-  geom_point(data = df3 %>% filter(year == 2022), aes(x = lon, y = lat), color = 'red', alpha = .05, size =.5) + 
-  coord_sf(xlim = c(-123.1, -122.4), ylim = c(45.45, 45.6), expand = TRUE) + 
-  theme(legend.position = "none")
- 
+  geom_point(data = top15_tracts_2022, 
+             aes(x = lon, y = lat, size = n), color = 'blue', alpha = .5) +
+  geom_path(data = max_red, aes(x = lon, y = lat), color = "red", size = 1, alpha = .5) + 
+  geom_path(data = max_blue, aes(x = lon, y = lat), color = "blue", size = 1, alpha = .5) +
+  geom_path(data = max_yellow, aes(x = lon, y = lat), color = "yellow", size = 1, alpha = .5) +
+  geom_path(data = max_orange, aes(x = lon, y = lat), color = "orange", size = 1, alpha = .5) +
+  geom_path(data = max_green, aes(x = lon, y = lat), color = "green", size = 1, alpha = .5) +
+  labs(title =  "TriMet MAX System") +
+  coord_sf(xlim=c(-123.1, -122.4), ylim = c(45.40,45.6)) +
+  theme(legend.position = "none") 
+```
+From this visualization it is clear that the security incident hot spots are along the max routes. 
+
+
+Which MAX routes had the most security incidents ? 
+```{r}
+df3 %>% filter(type == 'MAX') %>% group_by(route_number) %>% count() %>% arrange(desc(n))
+
+```
+During what hour do most security incidents occur on the blue line ?  
+
+```{r}
+df3 %>% filter(max_line == "blue") %>% 
+  group_by(hour) %>% summarize(n = n()) %>% ggplot(aes(x = hour, y = n)) + geom_line(color = "blue") + labs(title = "The most incidents occur between 7 and 8 pm")
+```
+
+
+Does this change according to season? 
+```{r}
+df3 = df3 %>% mutate(season = case_when(
+    month %in% c("Dec", "Jan", "Feb") ~ "Winter",
+    month %in% c("Mar", "Apr", "May") ~ "Spring",
+    month %in% c("Jun", "Jul", "Aug") ~ "Summer",
+    month %in% c("Sep", "Oct", "Nov") ~ "Autumn",
+    TRUE ~ as.character(month)
+  ))
+
+df3 %>% filter(max_line == "blue") %>% 
+  group_by(hour, season) %>% summarize(n = n()) %>% ggplot(aes(x = hour, y = n)) + geom_line(color = "blue") + facet_wrap(~season) + labs(title = "Incidents peak between 5 and 8 pm on the MAX Blue Line")
+```
+
+Looks like evening, 5 - 8 pm is when the most activity occurs on MAX Blue line. 
+
+How about for the whole system? 
+```{r}
+df3 %>% group_by(hour, season) %>% summarize(n = n()) %>% ggplot(aes(x = hour, y = n)) + geom_line(color = "black") + facet_wrap(~season)
+```
+Do MAX lines have different peak incident hours? 
+
+```{r}
+df3 %>% filter(!is.na(max_line)) %>% 
+  group_by(hour, max_line) %>% summarize(n = n()) %>% ggplot(aes(x = hour, y = n)) + geom_line(aes(color = max_line)) + facet_wrap(~max_line) + scale_color_manual(values = c("blue", "green", "orange", "red", "yellow"))
 ```
 
 Interactive Choropleth of 2022 data using leaflet 
 ```{r}
-library(leaflet)
-library(leaflet.extras)
-library(tidyverse)
-
-
 leaflet_data= incident_per_tract_2022 %>% distinct() %>% st_as_sf()
 
 pal = colorBin("YlOrRd", domain= leaflet_data$n, bins = c(0,50,100,150,200,250,300,350,400,450,500))
@@ -353,24 +474,6 @@ leaflet() %>%
 ```
 
 
-```{r}
-
-incident_per_tract_2022_2= df3 %>% filter(year == 2022) %>% group_by(tractce) %>%
-  count() %>% left_join(df3 %>% select(tractce, namelsadco, geometry.y), by = "tractce") 
-
-
-library(cartogram)
-
-carto_data = incident_per_tract_2022_2 %>% distinct()  %>%  st_as_sf() 
-
-carto_data = st_transform(carto_data, 3857)
-
-cartog_cont = cartogram_cont(carto_data, weight = "n")
-
-ggplot(cartog_cont) + geom_sf(aes(fill = n)) + labs(title = "Cartogram of Tracts with most Incidents in 2022") # Gateway, Rose Quarter, Downtown 
-```
-
-
 ## Gateway Transit center is by far the place with most security incidents in 2022. 
 
 What stops are the other 4 stops with the most security incidents in 2022? 
@@ -386,7 +489,7 @@ Hollywood/NE 42nd Ave TC
 Beaverton TC MAX Station 
 Rose Quarter TC MAX Station
 
-It does make sense that the MAX would have more security incidents, as they hold more people, often have less supervision on the cars, and they offer shelter / seclusion. It will be interesting to see what _types_ of incidents occur the most at these sites. 
+It does make sense that the MAX would have more security incidents, as they hold more people, often have less supervision on the cars, and they offer shelter / seclusion. 
 
 Is this trend for Gateway TC true for other years? Does it match the overall trend in the system in the same time frame? 
 
@@ -412,36 +515,15 @@ cor(gateway_year_counts$n,df3_year_counts$n) #
 
 There is a strong correlation between security incidents across metro area and incidents at Gateway TC. 
 
-In 2022, which tracts had more than 100 security incidents in that year ? 
 
-```{r}
-top15_tracts_2022 = incident_per_tract_2022 %>% filter(n >= 100) %>% distinct(tractce) %>% inner_join(df3 %>% filter(year == 2022), top15_tracts_2022, by = "tractce") 
-
-#let's plot these events on the map 
-ggplot() +
-  geom_sf(data = tri_county_tracts) +
-  geom_point(data = top15_tracts_2022 %>% group_by(location_id) %>% summarize(n = n(), lon, lat) %>% distinct(n, lon, lat), 
-             aes(x = lon, y = lat, size = n), color = 'blue', alpha = .5) +
-  coord_sf(xlim = c(-122.85, -122.4), ylim = c(45.425, 45.6)) + 
-  theme(legend.position = "none") 
-
-#this basically shows where each max line stops.
-```
-Top 15 tracts 
-```{r}
-unique(top15_tracts_2022$tractce)
-```
-
-
-
-It appears that it is the Red and Blue MAX lines play a big role in the incident numbers. Within these tracts, if we take out the MAX related security incidents, are they still high-incident areas? 
+It appears that it is the Red and Blue MAX lines play a big role in the incident numbers. Within these 15 tracts, if we take out the MAX related security incidents, are they still high-incident areas? 
 ```{r}
 df3 %>% filter(tractce %in% top15_tracts_2022$tractce & year == 2022 & type != 'MAX') %>% group_by(tractce) %>% count() %>% arrange(desc(n))
 
 df3 %>% filter(tractce %in% top15_tracts_2022$tractce & year == 2022 ) %>% group_by(tractce) %>% count() %>% arrange(desc(n))
 
 ```
-Even not counting max related security incidents - tract 008100 (Gateway) is a big hot spot. 
+Even not counting max related security incidents - tract 008100 (Gateway) is a big hot spot. The other tracts' number decrease significantly without the max line incidents. 
 
 
 How many different routes intersect around Gateway TC ? 
@@ -450,9 +532,7 @@ df3 %>% filter(tractce == '008100') %>% group_by(route_number) %>% summarize(n =
 ```
 
 
-
-
-# We recommend examining the characteristics of the security incidents at Gateway Transit Center. It would appear that by proposing interventions at this location in the transit system, we could see the greatest effect on reducing security incidents.
+## Next let us look at the characteristics of the security incidents at Gateway Transit Center. 
 
 Gateway TC is within tract 008100
 The Gateway TC `location_id` is 10864
@@ -486,62 +566,7 @@ Transit Tracker™ sign with MAX arrival countdown
 Coffee Max: coffee, hot dogs and beverages during weekday commute hours
 
 
-Which routes had the most security incidents in 2022 ? 
-```{r}
-unique(df3$route_number)
 
-df3 %>% filter(type == 'MAX') %>% group_by(route_number) %>% count() %>% arrange(desc(n))
-
-
-```
-
-I cannot locate which routes (100, 200, 190, 925) are. I presume that these three digit route numbers are an internal code for the Max lines. I can filter the dataset and map the route stops to see which ones they are.  
-
-```{r}
-route_mapper = function(route){
-  ggplot() +
-  geom_sf(data = tri_county_tracts) +
-  geom_point(data = df3 %>% filter(route_number == route), aes(x = lon, y = lat), color = 'red', alpha = .05, size =.5) + 
-  coord_sf(xlim = c(-123.1, -122.4), ylim = c(45.45, 45.6), expand = TRUE) + 
-  theme(legend.position = "none")
-}
-```
-
-route 100 = BLUE LINE
-```{r}
-route_mapper(100)
-```
-route 200 = GREEN LINE 
-```{r}
-route_mapper(200)
-```
-route 190 = YELLOW LINE 
-```{r}
-route_mapper(190)
-```
-
-route 925 = Inconclusive
-```{r}
-route_mapper(925)
-```
-route 90 = RED 
-```{r}
-route_mapper(90)
-```
-
-route 290 = ORANGE LINE 
-```{r}
-route_mapper(290)
-```
-Adding Max color col to dataset 
-```{r}
-df3 = df3 %>% mutate(max_line = factor(case_when(
-                              route_number == 100 ~ "blue", 
-                              route_number == 200 ~ "green", 
-                              route_number == 190 ~ "yellow", 
-                              route_number == 90 ~ "red", 
-                              route_number == 290 ~ "orange")))
-```
 
 
 ## TYPE & SUBTYPE COLUMNS 
@@ -605,38 +630,8 @@ ggplot() +
   theme(legend.position = "none") 
 ```
 
-During what hour do most security incidents occur on the blue line ? 7 pm 
 
-```{r}
-df3 %>% filter(max_line == "blue") %>% 
-  group_by(hour) %>% summarize(n = n()) %>% ggplot(aes(x = hour, y = n)) + geom_line(color = "blue") + labs(title = "The most incidents occur between 7 and 8 pm")
-```
 
-Does this change according to season? 
-```{r}
-df3 = df3 %>% mutate(season = case_when(
-    month %in% c("Dec", "Jan", "Feb") ~ "Winter",
-    month %in% c("Mar", "Apr", "May") ~ "Spring",
-    month %in% c("Jun", "Jul", "Aug") ~ "Summer",
-    month %in% c("Sep", "Oct", "Nov") ~ "Autumn",
-    TRUE ~ as.character(month)
-  ))
-
-df3 %>% filter(max_line == "blue") %>% 
-  group_by(hour, season) %>% summarize(n = n()) %>% ggplot(aes(x = hour, y = n)) + geom_line(color = "blue") + facet_wrap(~season) + labs(title = "Incidents peak between 5 and 8 pm on the MAX Blue Line")
-```
-Looks like evening, 5 - 8 pm is when the most activity occurs on MAX Blue line. 
-
-How about for the whole system? 
-```{r}
-df3 %>% group_by(hour, season) %>% summarize(n = n()) %>% ggplot(aes(x = hour, y = n)) + geom_line(color = "black") + facet_wrap(~season)
-```
-Do MAX lines have different peak incident hours? 
-
-```{r}
-df3 %>% filter(!is.na(max_line)) %>% 
-  group_by(hour, max_line) %>% summarize(n = n()) %>% ggplot(aes(x = hour, y = n)) + geom_line(aes(color = max_line)) + facet_wrap(~max_line) + scale_color_manual(values = c("blue", "green", "orange", "red", "yellow"))
-```
  
 Focusing on security incidents in 1 tract - lets do downtown 010602 
 
@@ -720,6 +715,7 @@ df3 %>% group_by(hour) %>% summarize(n = n()) %>% arrange(desc(n))
 
 
 What part of the system is most dangerous between the hours of 8 pm and 5 am ? 
+
 Where are the most incidents occurring at night? Downtown, Rose Quarter, Gateway, Downtown 2
 
 ```{r}
@@ -730,24 +726,5 @@ df3 %>% filter(night_time == 1) %>%
 
 ```
 
-Where have the homicides occured? 
 
-
-Sleepers / riders without destination 
-```{r}
-
-```
-
-
-FINDINGS: 
-
-*  2022 had significantly higher security incidents than the previous years, following a overall increasing trend.
-*  Within that year, May through July has more activity, and April, Sep, and Oct had less.
-*  Given the convergence of multiple routes, transit centers are hotspots for security incidents
-*  Among the transit centers, Gateway Transit Center is a consistent hot spot, followed by Rose Quarter TC
-*  During each day, we see the most security incidents during the hours of 4 to 8 pm.
-*  Among all routes, the MAX Blue line is the most dangerous. 
-
-
-Creating features from `comments` column 
 
