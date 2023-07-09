@@ -11,8 +11,8 @@ III. Incident Analysis
 
 FINDINGS: 
 
-*  2022 had significantly higher security incidents than the previous years, following a overall increasing trend.
-*  Within that year, May through July has more activity, and April, Sep, and Oct had less.
+*  2022 had significantly higher security incidents than the previous years, with 36% more incidents than in 2021. 
+*  Within that year, May through July has more activity, and April, Sep, and Oct had fewer incidents. 
 *  Given the convergence of multiple routes, transit centers are hotspots for security incidents
 *  Among the transit centers, Gateway Transit Center is a consistent hot spot, followed by Rose Quarter TC
 *  During each day, we see the most security incidents during the hours of 4 to 8 pm.
@@ -35,7 +35,7 @@ library(sf)
 library(skimr)
 library(leaflet)
 library(leaflet.extras)
-
+library(gifski)
 library(gganimate)
 library(lubridate)
 library(ggmap)
@@ -63,7 +63,7 @@ ggplot(df_year_counts, aes(x = year, y = n, fill = color)) +
   scale_fill_manual(values = c("Above Average" = "#FF7F7F", "Below Average" = "#7F7FFF")) +
   theme_minimal() +
   labs(x = "Year", y = "Count", fill = "", title = "Number of Security Incidents Per Year") + 
-  geom_label(data = df_year_counts %>% filter(year == 2022), aes(x = year, y = n, label = paste0(round(yoy, 2), "% +")), nudge_x = -1, fill = "white")
+  geom_label(data = df_year_counts %>% filter(year == 2022), aes(x = year, y = n, label = paste0(round(yoy, 2), "% +")), nudge_x = -1, fill = "yellow")
     
 ?geom_label()
 ```
@@ -247,7 +247,7 @@ The following months show statistical significance, specifically in that April, 
 
 # II. LOCATION ANALYSIS 
 
-Our analysis of the months shows during the months of May through July, there were higher than expected security incidents. Let us examine where these events occurred. 
+Our analysis of incidents in 2022 during the months of May through July, there were higher than expected security incidents. Let us examine where these events occurred. 
 
 Loading spatial data of Multnomah, Clackamas, and Washington counties:
 ```{r}
@@ -296,7 +296,7 @@ In addition to Gateway, Hollywood, and the Rose Quarter, we can see that the Dow
 
 Does this observation hold during April, September, and October, where there were fewer than expected incidents?
 ```{r}
-df_apr_sep_oct_2022 = df3 %>% filter(month %in% c("Apr", "Sep", "Oct")) %>% group_by(location, location_id) %>% summarize(n = n()) %>% arrange(desc(n))   
+df_apr_sep_oct_2022 = df3 %>% filter(year == 2022 & month %in% c("Apr","Sep","Oct")) %>% group_by(location, location_id) %>% summarize(n = n()) %>% arrange(desc(n))   
   
   
 df_apr_sep_oct_2022=  inner_join(df_apr_sep_oct_2022, df3 %>% select(location_id,stop_name, lon, lat, tractce, geometry.y) %>% distinct(), by = 'location_id')
@@ -310,10 +310,8 @@ ggmap(portland_map) +
 
 
 ```
-Yes, with more incidents in the Gresham area. 
 
-
-Instead of view individual locations, let's examine how security incident are distributed by area.  
+Instead of view individual route stops, let's examine how security incident are distributed by area.  
 
 
 Choropleth to show hot spot areas in the city during the summer of 2022: 
@@ -335,7 +333,7 @@ ggplot(subset) +
 
 choropleth(incident_per_tract_mjj_2022)
 ```
-We see a band of high-incident areas across the city, east to west. Given that the locations with the most incidents are at transit centers across this parallel, it appears that security incidents occur around the MAX routes. 
+We see a band of high-incident areas across the city, east to west. Given that the locations with the most incidents are at transit centers across this parallel, it appears that security incidents occur frequently around the Blue and Red MAX lines. 
 
 Loading MAX data: 
 ```{r}
@@ -359,6 +357,8 @@ df3 = df3 %>% mutate(max_line = factor(case_when(
                               route_number == 190 ~ "yellow", 
                               route_number == 90 ~ "red", 
                               route_number == 290 ~ "orange")))
+
+write_rds(shape2, file = 'max_data.rds')
 
 ```
 
