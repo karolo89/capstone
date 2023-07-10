@@ -1,0 +1,209 @@
+---
+title: "Untitled"
+output: html_document
+date: "2023-07-09"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(stringr)
+
+```
+
+OBJECTIVE: Creating our own classes of incidents based on words present in comments column: 
+SCOPE: in the year 2022
+```{r}
+df22 = df3 %>% filter(year == 2022)
+```
+
+DICTIONARIES 
+```{r}
+drug_words = c('[Dd]rug','[Ss]hooting up','[Pp]araphenelia','[Bg]aggie','[Nn]eedle','[Hh]igh', '[Hh]erion','[Mm]eth', '[Pp]ipe', '[Ii]ntoxicat', '[Cc]ocaine', '[Hh]ypodermic','[Ff]ume', '[Dd]ose','[Ff]entanyl','[Nn]arcotic','[Ii]nhalent', '[Cc]annabis','[Mm]arijuana','[Ff]oil',)
+
+
+alcohol_words = c('[Bb]eer','[Aa]lcohol','[Dd]runk', "[Ii]ntoxicated")
+
+df22 %>% filter(str_detect(comments, pattern = paste(drug_words, collapse = "|"))) 
+
+df22 %>% filter(str_detect(comments, pattern = paste(alcohol_words, collapse = "|")))  
+
+
+
+
+
+```
+
+## words to put in dictionaries:
+cussing and swearing, being verbally abusive
+DO NOT BOARD 
+refus
+police 
+physically 
+assault
+Disruption of service
+aggressive
+machettee 
+axe
+hachet
+brandishing
+gun
+vaping
+smoking
+welfare chk
+tent
+attacking
+transient
+angry
+crazy
+verbal
+disruptive
+police
+
+
+```{r}
+df22 %>% filter(str_detect(comments, regex("do not board", ignore_case = TRUE)))
+
+
+
+```
+
+
+
+
+```{r}
+sex_words = c('[Ll]ewd','[Ss]ex','[Mm]asturbat','[Ii]nappropriate','[Gg]enital','[Rr]ape','[Hh]arass')
+
+df22 %>% filter(str_detect(comments, pattern = paste(sex_words, collapse = "|"))) %>%  group_by(tractce) %>% count() %>% arrange(desc(n))
+```
+```{r}
+violent_words <- c('[Ss]wing', '[Hh]it', '[Ss]truck', '[Aa]ssault', '[Tt]hrow', '[Gg]rab',
+           '[Tt]hreat', '[Pp]hysic', '[Mm]enac','[Ff]ace','[Ff]led', '[Ii]njur', '[Ss]teel pole', '[Ss]pit','[Ss]hov', '[Ss]lam','[Hh]urt', '[Bb]elig','[Pp]unch', '[Gg]oing off', '[Yy]ell','[Aa]ggressive','[Gg]un', '[Kk]nife','[Mm]achetee','[Aa]xe','[Br]andish','[Hh]achet','[Aa]xe','[Aa]ttack', '[Aa]ggres', '[Kk]ill', '[Pp]ound', '[Ss]uicid', '[Ff]ire', '[Ff]irearm', '[Hh]arras', '[Bb]lood')
+
+df22 %>% filter(str_detect(comments, pattern = paste(violent_words, collapse = "|")))
+```
+
+
+```{r}
+bio_words = c('[Uu]rin','[Bb]lood','[Bb]leed', '[Vv]omit','[Ss]ubstance', '[Bb]io harzard')
+
+df22 %>% filter(str_detect(comments, pattern = paste(bio_words, collapse = "|")))
+```
+
+```{r}
+library(tidyverse)
+library(tidytext)
+library(stringr)
+library(MASS)
+
+corpus <- Corpus(VectorSource(df22$comments))
+
+corpus <- tm_map(corpus, content_transformer(tolower))
+corpus <- tm_map(corpus, removePunctuation)
+corpus <- tm_map(corpus, removeNumbers)
+corpus <- tm_map(corpus, removeWords, stopwords("english"))
+corpus <- tm_map(corpus, stemDocument)
+
+
+
+
+
+```
+
+
+```{r}
+dtm <- DocumentTermMatrix(corpus)
+
+library(topicmodels)
+
+ tm_lda= LDA(dtm, k = 4, control = list(seed = 503))
+
+topics = tidy(dtm_lda, matrix = "beta")
+
+top_terms = topics %>% group_by(topic) %>% slice_max(beta, n = 10) %>% ungroup() %>% arrange(topic, -beta)
+
+top_terms %>%
+  mutate(term = reorder_within(term, beta, topic)) %>%
+  ggplot(aes(beta, term, fill = factor(topic))) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~ topic, scales = "free") +
+  scale_y_reordered()
+
+
+dtm_tidy %>% filter(!term %in% top_terms$term) %>% 
+```
+```{r}
+corpus <- Corpus(VectorSource(df22$comments))
+
+corpus <- tm_map(corpus, content_transformer(tolower))
+corpus <- tm_map(corpus, removePunctuation)
+corpus <- tm_map(corpus, removeNumbers)
+corpus <- tm_map(corpus, removeWords, stopwords("english"))
+corpus <- tm_map(corpus, stemDocument)
+
+#corpus = tm_map(corpus, removeWords,top_terms$term )
+
+dtm <- DocumentTermMatrix(corpus)
+lda2  = LDA(dtm, k = 4, control = list(seed = 503))
+
+
+
+
+```
+
+```{r}
+words  = df22 %>% unnest_tokens(word, comments) %>% 
+  anti_join(stop_words) %>% 
+  filter(!(word %in% (top_terms$term))) 
+
+words <- words %>%
+count(incident_id, word) %>%
+group_by(incident_id) %>%
+mutate(exists = (n>0)) %>%
+ungroup %>%
+group_by(word) %>%
+mutate(total = sum(n)) %>%
+filter(total > 100) %>%
+pivot_wider(id_cols = incident_id, names_from = word, values_from = exists, values_fill = list(exists=0)) 
+
+```
+```{r}
+library(broom)
+kclust = kmeans(words, centers = 3)
+kclust$centers
+
+wink <- augment(kclust,words)
+wink %>% group_by(.cluster) %>% count()
+
+df22 = inner_join(df22, wink %>% dplyr::select(incident_id,.cluster), by = "incident_id")
+
+df22 %>% filter(.cluster == 3)
+
+
+
+
+```
+
+```{r}
+kclusts <- tibble(k = 1:9) %>%
+mutate(
+kclust = map(k, ~kmeans(words, .x)),
+glanced = map(kclust, glance),
+augmented = map(kclust, augment, words)
+)
+
+assignments <- kclusts %>%
+unnest(augmented)
+
+```
+
+```{r}
+clusterings <- kclusts %>%
+unnest(glanced, .drop = TRUE)
+ggplot(clusterings, aes(k, tot.withinss)) +
+geom_line()
+```
+

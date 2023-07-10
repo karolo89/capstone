@@ -17,6 +17,8 @@ FINDINGS:
 *  Among the transit centers, Gateway Transit Center is a consistent hot spot, followed by Rose Quarter TC
 *  During each day, we see the most security incidents during the hours of 4 to 8 pm.
 *  Among all routes, the MAX Blue line is the most dangerous. 
+*  Between the hours of 8 pm and 5 am, downtown (tract 010001) has the most security incidents 
+*  1 in 3 incidents involve violence, intimidation, or abuse
 
 
 
@@ -44,6 +46,21 @@ library(ggmap)
 Dataset: 
 ```{r}
 df3 = read_rds('/Users/chanks/workspace/capstone/data/df_spatial_clean.rds')
+```
+
+Need to standardize location names per location_id
+```{r}
+df3 = df3 %>% mutate(location = case_when(location_id == 10864 ~ "Gateway/NE 99th Ave TC MAX Station",
+                                    location_id == 9654 ~ "Beaverton Transit Center",
+                                    location_id == 9848 ~ "Hatfield Government Center MAX Station",
+                                    location_id == 13248 ~ "Clackamas Town Center",
+                                    location_id == 10856 ~ "Parkrose Sumner Transit Center",
+                                    location_id == 10857 ~ "Gresham Central Transit Center",
+                                    location_id == 8355 ~ "Ruby Junction/E 197th Ave MAX Station",
+                                    TRUE ~ as.character(location)))
+
+df3 = df3 %>% mutate(location = ifelse(location %in% c("Beaverton Transit Center","Beaverton TC MAX Station"), "Beaverton Transit Center", location))
+
 ```
 
 # I.  TIME ANALYSIS 
@@ -111,25 +128,24 @@ Clearly significant results in the year 2022. This will be the year we focus on 
 
 # By Location
 ```{r}
-# Group data by year and location, and count the number of incidents
-df_grouped <- df3 %>%
-  group_by(year, location) %>%
-  summarise(incident_count = n(), .groups = "drop")
-
-# Filter to top 10 locations by total incidents
-top_locations <- df_grouped %>% 
-  group_by(location) %>% 
-  summarise(total_incidents = sum(incident_count), .groups = "drop") %>% 
-  top_n(10, total_incidents) %>% 
+# Find out the locations with the highest incidents in 2022
+top_locations_2022 <- df_grouped %>%
+  filter(year == 2022) %>%
+  top_n(3, incident_count) %>%
   pull(location)
 
+# Add a new variable to the dataframe representing the highlight
 df_grouped <- df_grouped %>%
-  filter(location %in% top_locations)
+  mutate(highlight = ifelse(location %in% top_locations_2022, location, "Other"))
 
-# Create ggplot object
-p <- ggplot(df_grouped, aes(x = year, y = incident_count, color = location)) +
+# Create a factor with the levels ordered to ensure "Other" is first (and therefore gray)
+df_grouped$highlight <- factor(df_grouped$highlight, levels = c("Other", top_locations_2022))
+
+#Create ggplot object
+p <- ggplot(df_grouped, aes(x = year, y = incident_count, group = location, color = highlight)) +
   geom_line(size = 1) +
-  geom_point(data = subset(df_grouped, year == 2022), colour = "red", size = 4, shape = 4) +
+  geom_point(data = subset(df_grouped, year == 2022), size = 4, shape = 4) +
+  scale_color_manual(values = c("gray", "red", "blue", "green")) +
   labs(
     title = "Change in Number of Incidents Over Time",
     x = "Year",
@@ -147,13 +163,18 @@ p <- ggplot(df_grouped, aes(x = year, y = incident_count, color = location)) +
     size = 4,
     colour = "red"
   )
-# Add animation
+
+#Add animation
 p_animate <- p + transition_reveal(year)
 
-# Render the animation
+#Render the animation
 animate(p_animate, end_pause = 50, height = 400, width = 600)
-
 ```
+
+
+
+
+
 Appears that most of the incidents are occurring at Gateway, and Rose Quarter last year with some deviation between the top 3-5 following. Lets look to see if there is a trend with specific seasons/months.
 
 ```{r}
@@ -613,6 +634,7 @@ What are the main subtypes we want to condense this subtype codes to ?
 ```{r}
 df3 %>% group_by(incident_subtype_code_list) %>% count() %>% arrange(desc(n))
 
+df3 %>% filter(year == 2022) %>% filter(!is.na(incident_subtype_code_list)) %>% group_by(incident_subtype_code_list) %>% count() %>% arrange(desc(n))
 ```
 
 Where are the fights happening ? 
@@ -638,7 +660,7 @@ ggplot() +
 df3_known_subtypes = df3 %>% filter(!is.na(incident_subtype_code_list))
 ```
 
-Weapon-related incidents: 
+Trespass-related incidents: 
 ```{r}
 ggplot() +
   geom_sf(data = tri_county_tracts) +
@@ -646,7 +668,11 @@ ggplot() +
   coord_sf(xlim = c(-123.1, -122.4), ylim = c(45.45, 45.6), expand = FALSE) + 
   theme(legend.position = "none") 
 ```
-
+Does it seem like trespassing mainly occurs around max lines ? 
+```{r}
+ df3 %>% filter(incident_subtype_code_list == 'TRESPASS') %>% group_by(route_number) %>% count()
+```
+Yes, probably because there are more restricted areas around the max rail. 
 
 
  
@@ -681,6 +707,8 @@ How does this compare with the rest of the system?
 
 ```{r}
 df3 %>% filter(!is.na(incident_subtype_code_list)) %>% group_by(incident_subtype_code_list) %>% count() %>% arrange(desc(n)) 
+
+df3 %>% filter(year == 2022 & !is.na(incident_subtype_code_list))
 ```
 
 Overall, the most frequent occurences are vandalism, trespressing, assault of customer, fight, and assault of employee.
@@ -743,14 +771,221 @@ df3 %>% filter(night_time == 1) %>%
 
 ```
 
+# INCIDENT SUBTYPE CATEGORIZATION 
+
+Objective: Classifying incidents based on words present in comments column: 
+
+
+```{r}
+df22 = df3 %>% filter(year == 2022)
+```
+
 Sleepers 
 
 ```{r}
-df3 %>% filter(str_detect(comments, "[Ss]leep"))
+df22 = df22 %>% mutate(sleeper = ifelse(str_detect(comments, "[Ss]leeper"), 1, 0))
+df22 %>% filter(sleeper == 1) %>% group_by(location) %>% count() %>% arrange(desc(n))
+```
+The result of the sleeper class is too lean to do meaningfu analysis. Same with alcohol/drugs 
+
+DICTIONARIES 
+```{r}
+drug_words = c('[Dd]rug','[Ss]hooting up','[Ss]moke','[Vv]ape', '[Pp]araphenelia','[Bg]aggie','[Nn]eedle','[Hh]igh', '[Hh]erion','[Mm]eth', '[Pp]ipe', '[Cc]ocaine', '[Hh]ypodermic','[Ff]ume', '[Dd]ose','[Ff]entanyl','[Nn]arcotic','[Ii]nhalent', '[Cc]annabis','[Mm]arijuana','[Ff]oil')
 
 
-df3 = df3 %>% mutate(sleeper = ifelse(str_detect(comments, "[Ss]leeper"), 1, 0))
-df3 %>% filter(sleeper == 1) %>% group_by(location) %>% count() %>% arrange(desc(n))
+df22 %>% filter(str_detect(comments, pattern = paste(drug_words, collapse = "|"))) #568 incidents containing one or more of the words above 
+
+df22 = df22 %>% mutate(drugs = ifelse(str_detect(comments, pattern = paste(drug_words, collapse = "|")),1,0))
+
+
+
 ```
 
-Most sleepers found in gresham. 
+```{r}
+alcohol_words = c('[Bb]eer','[Aa]lcohol','[Dd]runk', "[Ii]ntoxicat")
+
+df22 %>% filter(str_detect(comments, pattern = paste(alcohol_words, collapse = "|")))  
+
+df22 = df22 %>% mutate(alcohol = ifelse(str_detect(comments, pattern = paste(alcohol_words, collapse = "|")),1,0))
+```
+do not board (86'd people)
+```{r}
+df22 %>% filter(str_detect(comments, pattern = regex("do not board", ignore_case = TRUE)))
+
+df22 = df22 %>% mutate(do_not_board = ifelse(str_detect(comments, pattern = regex("do not board", ignore_case = TRUE)),1,0))
+
+```
+```{r}
+violent_words <- c('[Ss]wing', '[Hh]it', '[Ss]truck', '[Aa]ssault', '[Tt]hrow', '[Gg]rab',
+           '[Tt]hreat', '[Pp]hysic', '[Mm]enac','[Ff]ace','[Ff]led', '[Ii]njur', '[Ss]teel pole', '[Ss]pit','[Ss]hov', '[Ss]lam','[Hh]urt', '[Bb]elig','[Pp]unch', '[Gg]oing off', '[Yy]ell','[Aa]ggressive','[Gg]un', '[Kk]nife','[Mm]achetee','[Aa]xe','[Br]andish','[Hh]achet','[Aa]xe','[Aa]ttack', '[Aa]ggres', '[Kk]ill', '[Pp]ound', '[Ss]uicid', '[Ff]ire', '[Ff]irearm', '[Hh]arras', '[Bb]lood')
+
+df22 %>% filter(str_detect(comments, pattern = paste(violent_words, collapse = "|")))
+
+df22 = df22 %>% mutate(violence = ifelse(str_detect(comments, pattern = paste(violent_words, collapse = "|")),1,0))
+
+df22 %>% filter(violence == 1) %>% nrow()
+
+2223/nrow(df22)
+
+```
+
+34% of incidents in 2022 could be considered danger/harassment/physical-verbal intimidation acts.
+
+
+Ranking violent incidents by transit center/max stop in 2022:
+```{r}
+#top 100 locations where these sort of incidents occur in 2022
+viol_locs_22 = df22 %>% filter(violence == 1 & str_detect(location, paste(c("MAX", "TC", "Center"), collapse = "|"))) %>% group_by(location) %>% count() %>% arrange(desc(n)) %>% rename(viol_inc_count = n)
+
+#getting total incidents per these locations in 2022
+total_incidents_locs22 = df22 %>% filter(location %in% viol_locs_22$location) %>% group_by(location) %>% count() %>% rename(total_inc_count = n)
+
+#joining two aggregate tables to create percentage of violent acts by total acts 
+#filter danger_zones by more than 20 incidents in 2022 
+danger_zones = inner_join(total_incidents_locs22, viol_locs_22, by = "location") %>% mutate(perc_danger = viol_inc_count/total_inc_count) %>% filter(total_inc_count >= 20) %>% arrange(desc(perc_danger)) 
+
+
+df22approx = df22 %>% mutate(lon = round(lon,2), 
+               lat = round(lat,2))
+
+#joining spatial data with subset: 
+df22approx = left_join(danger_zones, df22approx %>% dplyr::select(location, lon, lat), by = "location") %>% distinct()
+
+```
+
+Among incidents at these locations, here are the highest ratio of danger incidents per total incidents: 
+
+```{r}
+danger_zones %>% head(n = 10) %>% ggplot(aes(x = reorder(location, perc_danger), y = perc_danger)) + geom_col() + coord_flip()
+```
+
+Plotting the danger zones: 
+```{r}
+ggplot() +
+  geom_sf(data = tri_county_tracts) +
+  geom_point(data = df22approx, aes(x = lon, y = lat, color = perc_danger, size = perc_danger)) +
+  geom_path(data = max_red, aes(x = lon, y = lat), color = "red", size = 1, alpha = .3) + 
+  geom_path(data = max_blue, aes(x = lon, y = lat), color = "blue", size = 1, alpha = .3) +
+  geom_path(data = max_yellow, aes(x = lon, y = lat), color = "yellow", size = 1, alpha = .3) +
+  geom_path(data = max_orange, aes(x = lon, y = lat), color = "orange", size = 1, alpha = .3) +
+  geom_path(data = max_green, aes(x = lon, y = lat), color = "green", size = 1, alpha = .3) +
+  scale_color_gradient(low = "white", high = "red") + 
+  coord_sf(xlim=c(-123.1, -122.4), ylim = c(45.40,45.65)) + 
+  theme(legend.position = "none")
+```
+
+subtype VANDAL
+```{r}
+library(tidytext)
+df3_vandalism = df3 %>% filter(incident_subtype_code_list == "VANDAL")
+
+corpus <- Corpus(VectorSource(df3_vandalism$comments))
+corpus <- tm_map(corpus, content_transformer(tolower))
+corpus <- tm_map(corpus, removePunctuation)
+corpus <- tm_map(corpus, removeNumbers)
+corpus <- tm_map(corpus, removeWords, stopwords("english"))
+corpus <- tm_map(corpus, stemDocument)
+
+dtm <- DocumentTermMatrix(corpus)
+
+tidy_dtm = tidy(dtm)
+
+vandal_top_words <- tidy_dtm %>%
+  group_by(term) %>%
+  summarise(total = sum(count)) %>%
+  arrange(desc(total)) %>% filter(!(term %in% c('sent', 'incid','email', 'group', 'datetim', 'busmanagerstrimetorg','securityvand','call','stop','report','oper','supervisor','request','will','person','polic','respond','passeng','check','busstationmanagerstrimetorg'))) %>% filter(total >= 100)
+```
+```{r}
+vandal_top_words$term
+
+#select vandalism words from top words list above: 
+vandalism_words =  c("shelter", "glass", "broken", "window", "graffiti", "broke", "threw", "rock", "shatter", "board", "tape", "repair", "clean", "vandal", "fire", "break", "crack", "windshield", "repairbus", "spiderweb")
+```
+
+
+```{r}
+df22 %>% filter(str_detect(comments, pattern = paste(vandalism_words, collapse = "|"))) %>% group_by(incident_subtype_code_list) %>% count() %>% arrange(desc(n))
+```
+This seems somewhat functional. 
+
+subtype TRESPASS 
+```{r}
+library(tidytext)
+df3_trespass = df3 %>% filter(incident_subtype_code_list == "TRESPASS")
+
+corpus <- Corpus(VectorSource(df3_trespass$comments))
+corpus <- tm_map(corpus, content_transformer(tolower))
+corpus <- tm_map(corpus, removePunctuation)
+corpus <- tm_map(corpus, removeNumbers)
+corpus <- tm_map(corpus, removeWords, stopwords("english"))
+corpus <- tm_map(corpus, stemDocument)
+
+dtm <- DocumentTermMatrix(corpus)
+
+tidy_dtm = tidy(dtm)
+
+trespass_words <- tidy_dtm %>%
+  group_by(term) %>%
+  summarise(total = sum(count)) %>%
+  arrange(desc(total)) %>% filter(!(term %in% c('sent', 'incid','email', 'group', 'datetim', 'busmanagerstrimetorg','securityvand','call','stop','report','oper','supervisor','request','will','person','polic','respond','passeng','check','busstationmanagerstrimetorg'))) %>% filter(total >= 200) %>% head(n = 10)
+```
+
+
+```{r}
+df22 %>% filter(str_detect(comments, pattern = paste(trespass_words$term, collapse = "|"))) %>% group_by(incident_subtype_code_list) %>% count() %>% arrange(desc(n))
+
+```
+Not as good results. 
+
+What if we are just to filter comments for word "trespass" 
+```{r}
+df22 %>% filter(str_detect(comments,"trespass")) %>% filter(is.na(incident_subtype_code_list))
+```
+Yes, this is far more effective. 
+
+subtype = Fight vs. subtype ASLTCUST ? 
+```{r}
+df22 %>% filter(str_detect(comments, '[Ff]ight')) %>% group_by(incident_subtype_code_list) %>% count()
+```
+```{r}
+df3_asltcust = df3 %>% filter(incident_subtype_code_list == "ASLTCUST")
+
+corpus <- Corpus(VectorSource(df3_asltcust$comments))
+corpus <- tm_map(corpus, content_transformer(tolower))
+corpus <- tm_map(corpus, removePunctuation)
+corpus <- tm_map(corpus, removeNumbers)
+corpus <- tm_map(corpus, removeWords, stopwords("english"))
+corpus <- tm_map(corpus, stemDocument)
+
+dtm <- DocumentTermMatrix(corpus)
+
+tidy_dtm = tidy(dtm)
+
+asltcust_words <- tidy_dtm %>%
+  group_by(term) %>%
+  summarise(total = sum(count)) %>%
+  arrange(desc(total)) %>% filter(!(term %in% c('sent', 'incid','email', 'group', 'datetim', 'busmanagerstrimetorg','securityvand','call','stop','report','oper','supervisor','request','will','person','polic','respond','passeng','check','busstationmanagerstrimetorg'))) %>% filter(total >= 200)
+```
+
+```{r}
+df3_asltempl = df3 %>% filter(incident_subtype_code_list == "ASLTEMPL")
+
+corpus <- Corpus(VectorSource(df3_asltempl$comments))
+corpus <- tm_map(corpus, content_transformer(tolower))
+corpus <- tm_map(corpus, removePunctuation)
+corpus <- tm_map(corpus, removeNumbers)
+corpus <- tm_map(corpus, removeWords, stopwords("english"))
+corpus <- tm_map(corpus, stemDocument)
+
+dtm <- DocumentTermMatrix(corpus)
+
+tidy_dtm = tidy(dtm)
+
+asltcust_words <- tidy_dtm %>%
+  group_by(term) %>%
+  summarise(total = sum(count)) %>%
+  arrange(desc(total)) %>% filter(!(term %in% c('sent', 'incid','email', 'group', 'datetim', 'busmanagerstrimetorg','securityvand','call','stop','report','oper','supervisor','request','will','person','polic','respond','passeng','check','busstationmanagerstrimetorg'))) %>% filter(total >= 200)
+```
+
+
+
