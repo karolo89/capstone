@@ -119,7 +119,7 @@ dtm <- DocumentTermMatrix(corpus)
 
 library(topicmodels)
 
- tm_lda= LDA(dtm, k = 4, control = list(seed = 503))
+ LDA(dtm, k = 4, control = list(seed = 503))
 
 topics = tidy(dtm_lda, matrix = "beta")
 

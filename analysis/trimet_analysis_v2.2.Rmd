@@ -45,7 +45,7 @@ library(ggmap)
 
 Dataset: 
 ```{r}
-df3 = read_rds('/Users/chanks/workspace/capstone/data/df_spatial_clean.rds')
+df3 = read_rds('https://raw.githubusercontent.com/karolo89/capstone/main/data/df_spatial_clean.rds')
 ```
 
 Need to standardize location names per location_id
@@ -128,17 +128,24 @@ Clearly significant results in the year 2022. This will be the year we focus on 
 
 # By Location
 ```{r}
-# Find out the locations with the highest incidents in 2022
+df_grouped <- df3 %>%
+  group_by(year, location) %>%
+  summarise(incident_count = n(), .groups = "drop")
+
+df_grouped <- df_grouped %>%
+  filter(location %in% top_locations)
+
+#Find out the locations with the highest incidents in 2022
 top_locations_2022 <- df_grouped %>%
   filter(year == 2022) %>%
   top_n(3, incident_count) %>%
   pull(location)
 
-# Add a new variable to the dataframe representing the highlight
+#Add a new variable to the dataframe representing the highlight
 df_grouped <- df_grouped %>%
   mutate(highlight = ifelse(location %in% top_locations_2022, location, "Other"))
 
-# Create a factor with the levels ordered to ensure "Other" is first (and therefore gray)
+#Create a factor with the levels ordered to ensure "Other" is first (and therefore gray)
 df_grouped$highlight <- factor(df_grouped$highlight, levels = c("Other", top_locations_2022))
 
 #Create ggplot object
@@ -291,7 +298,7 @@ df_may_jul_2022 = df3 %>%
   summarize(n = n()) %>% arrange(desc(n))
 
 df_may_jul_2022 = inner_join(df_may_jul_2022, df3 %>% 
-                  select(location_id, lon, lat, tractce, geometry.y) %>% 
+                  dplyr::select(location_id, lon, lat, tractce, geometry.y) %>% 
                   distinct(), by = 'location_id')
 
 library(ggmap)
@@ -320,7 +327,7 @@ Does this observation hold during April, September, and October, where there wer
 df_apr_sep_oct_2022 = df3 %>% filter(year == 2022 & month %in% c("Apr","Sep","Oct")) %>% group_by(location, location_id) %>% summarize(n = n()) %>% arrange(desc(n))   
   
   
-df_apr_sep_oct_2022=  inner_join(df_apr_sep_oct_2022, df3 %>% select(location_id,stop_name, lon, lat, tractce, geometry.y) %>% distinct(), by = 'location_id')
+df_apr_sep_oct_2022=  inner_join(df_apr_sep_oct_2022, df3 %>% dplyr::select(location_id,stop_name, lon, lat, tractce, geometry.y) %>% distinct(), by = 'location_id')
 
 ggmap(portland_map) +
   geom_point(data = df_apr_sep_oct_2022, aes(x = lon, y = lat, size = n, color = n, alpha = n)) + 
@@ -339,7 +346,7 @@ Choropleth to show hot spot areas in the city during the summer of 2022:
 
 ```{r}
 incident_per_tract_mjj_2022= df3 %>% filter(year == 2022 & month %in% c("May", "Jun", "Jul")) %>% group_by(tractce) %>%
-  count() %>% left_join(df3 %>% select(tractce, namelsadco, geometry.y), by = "tractce") 
+  count() %>% left_join(df3 %>% dplyr::select(tractce, namelsadco, geometry.y), by = "tractce") 
 
 choropleth = function(subset){
 ggplot(subset) +
@@ -386,7 +393,7 @@ incident_per_tract_2022 = df3 %>%
   filter(year == 2022) %>% 
   group_by(tractce) %>%
   count() %>% 
-  left_join(df3 %>% select(tractce, namelsadco, geometry.y), by = "tractce") 
+  left_join(df3 %>% dplyr::select(tractce, namelsadco, geometry.y), by = "tractce") 
 
 
 top15_tracts_2022 = incident_per_tract_2022 %>% 
@@ -429,7 +436,7 @@ During this peak time, where are these incidents occuring?
 
 ```{r}
 
-blue_7pm = df3 %>% filter(max_line == "blue" & hour == 19) %>% count(location_id) %>% inner_join(df3 %>% select(location_id,location, lon, lat), by = "location_id") %>% distinct(location_id, n, lon, lat) %>% arrange(desc(n)) %>% head(n = 5) %>% distinct(location_id, n, lon, lat)
+blue_7pm = df3 %>% filter(max_line == "blue" & hour == 19) %>% count(location_id) %>% inner_join(df3 %>% dplyr::select(location_id,location, lon, lat), by = "location_id") %>% distinct(location_id, n, lon, lat) %>% arrange(desc(n)) %>% head(n = 5) %>% distinct(location_id, n, lon, lat)
 
 
 ggplot() + 
@@ -442,7 +449,7 @@ ggplot() +
 
 ```
 ```{r}
-blue_7p_tract = df3 %>% filter(max_line == "blue" & hour == 19) %>% count(tractce) %>% inner_join(df3 %>% select(tractce, geometry.y), by = "tractce") %>% distinct(tractce, n, geometry.y)
+blue_7p_tract = df3 %>% filter(max_line == "blue" & hour == 19) %>% count(tractce) %>% inner_join(df3 %>% dplyr::select(tractce, geometry.y), by = "tractce") %>% distinct(tractce, n, geometry.y)
 
 choropleth(blue_7p_tract)
 
@@ -518,7 +525,7 @@ What stops are the other 4 stops with the most security incidents in 2022?
 ```{r}
 top5_2022 = metro_2022 %>% arrange(desc(n)) %>% head(n =5) #10864 had 350 incidents, by far the most 
 
-inner_join(top5_2022,df3 %>% select(location_id,location), by = 'location_id') %>% group_by(location_id,n) %>% distinct(location) %>% tail(n =5)
+inner_join(top5_2022,df3 %>% dplyr::select(location_id,location), by = 'location_id') %>% group_by(location_id,n) %>% distinct(location) %>% tail(n =5)
 ```
 The other stops with the most security incidents are: 
 
@@ -627,6 +634,10 @@ df3 = df3 %>% mutate(incident_subtype_code_list = gsub(",","",incident_subtype_c
   mutate(incident_subtype_code_list = gsub("\\s", NA, incident_subtype_code_list)) #some more whitespace to get rid of 
 
 unique(df3$incident_subtype_code_list)
+
+df3 %>% count(incident_subtype_code_list)
+
+39934/48201
 ```
 
 
@@ -679,7 +690,7 @@ Yes, probably because there are more restricted areas around the max rail.
 Focusing on security incidents in 1 tract - lets do downtown 010602 
 
 ```{r}
-tract_010602_2022 = df3 %>% filter(year == 2022 & tractce == '010602') %>% select(-geometry.x) %>% st_as_sf() 
+tract_010602_2022 = df3 %>% filter(year == 2022 & tractce == '010602') %>% dplyr::select(-geometry.x) %>% st_as_sf() 
 
 leaflet() %>%
   addProviderTiles("OpenStreetMap") %>% 
@@ -786,7 +797,7 @@ Sleepers
 df22 = df22 %>% mutate(sleeper = ifelse(str_detect(comments, "[Ss]leeper"), 1, 0))
 df22 %>% filter(sleeper == 1) %>% group_by(location) %>% count() %>% arrange(desc(n))
 ```
-The result of the sleeper class is too lean to do meaningfu analysis. Same with alcohol/drugs 
+The result of the sleeper class is too lean to do meaningfu analysis. Same with alcohol/drugs. 
 
 DICTIONARIES 
 ```{r}
@@ -873,6 +884,7 @@ ggplot() +
   coord_sf(xlim=c(-123.1, -122.4), ylim = c(45.40,45.65)) + 
   theme(legend.position = "none")
 ```
+### Term frequency: 
 
 subtype VANDAL
 ```{r}
@@ -906,7 +918,7 @@ vandalism_words =  c("shelter", "glass", "broken", "window", "graffiti", "broke"
 ```{r}
 df22 %>% filter(str_detect(comments, pattern = paste(vandalism_words, collapse = "|"))) %>% group_by(incident_subtype_code_list) %>% count() %>% arrange(desc(n))
 ```
-This seems somewhat functional. 
+This seems somewhat functional... 
 
 subtype TRESPASS 
 ```{r}
@@ -981,7 +993,7 @@ dtm <- DocumentTermMatrix(corpus)
 
 tidy_dtm = tidy(dtm)
 
-asltcust_words <- tidy_dtm %>%
+asltempl_words <- tidy_dtm %>%
   group_by(term) %>%
   summarise(total = sum(count)) %>%
   arrange(desc(total)) %>% filter(!(term %in% c('sent', 'incid','email', 'group', 'datetim', 'busmanagerstrimetorg','securityvand','call','stop','report','oper','supervisor','request','will','person','polic','respond','passeng','check','busstationmanagerstrimetorg'))) %>% filter(total >= 200)
