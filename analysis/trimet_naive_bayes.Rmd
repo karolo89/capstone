@@ -1,0 +1,117 @@
+---
+title: "Untitled"
+output: html_document
+date: "2023-07-12"
+---
+
+```{r}
+df3 = read_rds('https://raw.githubusercontent.com/karolo89/capstone/main/data/df_spatial_clean.rds')
+
+df3 = df3 %>% mutate(incident_subtype_code_list = gsub("NONE","",incident_subtype_code_list)) %>% #removing the word "NONE"
+              mutate(incident_subtype_code_list = gsub("^\\s*$", NA, incident_subtype_code_list)) #changing empty rows to NA 
+
+#let's get rid of those pesky commas 
+df3 = df3 %>% mutate(incident_subtype_code_list = gsub(",","",incident_subtype_code_list)) %>% 
+  mutate(incident_subtype_code_list = gsub("\\s", NA, incident_subtype_code_list)) #some more whitespace to get rid of 
+
+df3 = df3 %>% mutate(incident_subtype_code_list = ifelse(!(is.na(incident_subtype_code_list)) & !(incident_subtype_code_list %in% c("VANDAL", "TRESPASS", "ASLTCUST", "FIGHT", "ASLTEMPL")), "OTHER", incident_subtype_code_list))
+
+#unique(df3$incident_subtype_code_list)
+
+# 
+df3 %>%
+  group_by(incident_subtype_code_list) %>%
+  summarise(incident_subtype_code_list,count = n()) %>%
+  distinct() %>%
+  arrange(desc(count))
+```
+
+```{r}
+df3_words <- df3 %>% 
+  select(incident_id, incident_subtype_code_list, comments) 
+
+df22_words = df22 %>% 
+  select(incident_id, incident_subtype_code_list, comments)
+
+library(tidytext)
+library(stringr)
+library(tm)
+library(caret)
+
+#separating data with and without labels 
+df3_words_unclassed = df3_words %>% filter(is.na(incident_subtype_code_list))
+df3_words_classed = df3_words %>% filter(!is.na(incident_subtype_code_list))
+```
+#preprocessing training text 
+```{r}
+text <- df22_words$comments
+text <- str_to_lower(text)                  # Convert to lowercase
+text <- removeNumbers(text)                 # Remove numbers
+text <- removePunctuation(text)             # Remove punctuation
+text <- removeWords(text, stopwords("en"))  # Remove stop words
+text <- stripWhitespace(text)               # Remove extra whitespaces
+```
+
+```{r}
+corpus<- Corpus(VectorSource(text))
+dtm <- DocumentTermMatrix(corpus)
+
+dtm_matrix = as.matrix(dtm)
+#joining target class back with dtm 
+
+#this is tokenized comments of all of incidents from 2022
+dtm_with_labels = cbind(as.data.frame(dtm_matrix),df22_words %>% dplyr::select(incident_id,incident_subtype_code_list))
+
+#now I need to split the N
+unique(dtm_with_labels$incident_subtype_code_list) #categories to classify
+
+df22_unclassed = dtm_with_labels %>% filter(is.na(incident_subtype_code_list)) %>% relocate(incident_id, incident_subtype_code_list) # the data we will ultimately run the model on 
+df22_classed = dtm_with_labels %>% filter(!is.na(incident_subtype_code_list)) %>% relocate(incident_id, incident_subtype_code_list) # the labeled data we will train and test model on 
+```
+
+train/test split on df22_classed\ 
+```{r}
+set.seed(503)
+index <- createDataPartition(df22_classed$incident_subtype_code_list, p = 0.75, list = FALSE)
+train <- df22_classed[index, ]
+test <- df22_classed[-index, ]
+
+control <- trainControl(method = "cv", number = 5)
+
+fit <- train(incident_subtype_code_list ~ .,
+data = train,
+method = "naive_bayes",
+metric = "Kappa",
+trControl = control)
+
+```
+
+
+```{r}
+df_dtm = df22 %>% unnest_tokens(word, comments) %>% 
+  anti_join(stop_words) %>% 
+  filter(!(word %in% top_terms$term)) %>% 
+  filter(!(word %in% c("operator", "incident", "police", "time", "security", "called", "date", "trimet.org", "busmanagers", "passenger", "reported", "op", "individual", "reports", "stated", "red", "medical", "scene", "arrived", "requested", "black", "platform", "car"))) %>% # remove common words like "bus" "passenger" "operator" 
+  filter(!grepl("\\d", word)) %>% 
+  count(incident_id, word) %>% 
+  group_by(incident_id) %>% 
+  mutate(freq = n/sum(n)) %>% 
+  mutate(exists = (n>0)) %>% 
+  ungroup %>% 
+  group_by(word) %>% 
+  mutate(total = sum(n))
+
+df_dtm = df_dtm %>% arrange(desc(total))
+
+tino = df_dtm %>% filter(total > 50 ) %>% 
+  pivot_wider(id_cols = incident_id, names_from = word, values_from = exists, values_fill = list(exist =0)) %>% 
+  merge(dplyr::select(df22, incident_id), all.y = TRUE)
+
+
+tino = data.frame(lapply(tino, function(x) ifelse(is.na(x), 0, as.integer(x))))
+
+
+
+```
+
+

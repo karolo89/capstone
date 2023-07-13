@@ -813,7 +813,7 @@ df22 = df22 %>% mutate(drugs = ifelse(str_detect(comments, pattern = paste(drug_
 ```
 
 ```{r}
-alcohol_words = c('[Bb]eer','[Aa]lcohol','[Dd]runk', "[Ii]ntoxicat")
+alcohol_words = c('[Bb]eer','[Aa]lcohol','[Dd]runk', "[Ii]ntoxicat", "[Dd]k")
 
 df22 %>% filter(str_detect(comments, pattern = paste(alcohol_words, collapse = "|")))  
 
@@ -952,6 +952,8 @@ Not as good results.
 What if we are just to filter comments for word "trespass" 
 ```{r}
 df22 %>% filter(str_detect(comments,"trespass")) %>% filter(is.na(incident_subtype_code_list))
+
+
 ```
 Yes, this is far more effective. 
 

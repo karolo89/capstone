@@ -1,0 +1,385 @@
+---
+title: "OnelastMLattempt"
+author: "Corey"
+date: "2023-07-10"
+output: html_document
+---
+
+Libraries: 
+```{r}
+library(tidyverse)
+library(lubridate)
+library(gridExtra)
+library(forcats)
+library(stringr)
+library(tm)
+library(SnowballC)
+library(RColorBrewer)
+library(tigris)
+library(sf)
+library(skimr)
+
+#install.packages("gganimate")
+library(gganimate)
+library(lubridate)
+#install.packages("ggmap")
+library(ggmap)
+library(rayshader)
+library(hms)
+library(av)
+library(rsample)
+library(recipes)
+library(tidymodels)
+library(purrr)
+```
+
+Dataset: 
+```{r}
+df3 = read_rds('https://raw.githubusercontent.com/karolo89/capstone/main/data/df_spatial_clean.rds')
+```
+# GEO-SPATIAL ANALYSIS 
+
+Justus' analysis of the months shows during the months of May through July, there were higher than expected security incidents. Let us examine where these events occured. 
+
+```{r}
+options(tigris_use_cache = TRUE)
+
+this.year = 2020
+
+mult_tracts = tracts(state = 'OR', county = "Multnomah", cb = T, year = this.year)
+clack_tracts = tracts(state = 'OR', county = "Clackamas", cb = T, year = this.year)
+wash_tracts = tracts(state = 'OR', county = "Washington", cb = T, year = this.year)
+
+tri_county_tracts = bind_rows(mult_tracts,clack_tracts,wash_tracts)
+```
+Resolving `NONE` issue 
+```{r}
+df3 = df3 %>% mutate(incident_subtype_code_list = gsub("NONE","",incident_subtype_code_list)) %>% #removing the word "NONE"
+              mutate(incident_subtype_code_list = gsub("^\\s*$", NA, incident_subtype_code_list)) #changing empty rows to NA 
+
+#let's get rid of those pesky commas 
+df3 = df3 %>% mutate(incident_subtype_code_list = gsub(",","",incident_subtype_code_list)) %>% 
+  mutate(incident_subtype_code_list = gsub("\\s", NA, incident_subtype_code_list)) #some more whitespace to get rid of 
+
+df3 = df3 %>% mutate(incident_subtype_code_list = ifelse(!(is.na(incident_subtype_code_list)) & !(incident_subtype_code_list %in% c("VANDAL", "TRESPASS", "ASLTCUST", "FIGHT", "ASLTEMPL")), "OTHER", incident_subtype_code_list))
+
+#unique(df3$incident_subtype_code_list)
+
+# 
+df3 %>%
+  group_by(incident_subtype_code_list) %>%
+  summarise(incident_subtype_code_list,count = n()) %>%
+  distinct() %>%
+  arrange(desc(count))
+```
+# I will focus on only the top 5 categories and and OTHER category for the remainig labeled groups (VANDAL, TRESPASS, ASLTCUST, FIGHT, ASLTEMPL)
+# Creating my test and train dataset:
+```{r}
+#targets_of_interest <- c("VANDAL", "TRESPASS", "ASLTCUST", "FIGHT", "ASLTEMPL", "OTHER")
+
+gbm_data <- df3 %>% 
+  select(incident_id, incident_subtype_code_list, month, day, hour, type, tractce, comments) 
+
+gbm_data$incident_subtype_code_list <- as.factor(gbm_data$incident_subtype_code_list)
+gbm_data$month <- as.factor(gbm_data$month)  
+gbm_data$tractce <- as.factor(gbm_data$tractce)
+gbm_data$hour <- as.factor(gbm_data$hour)
+
+gbm_data
+
+```
+# word tokenizing function
+```{r}
+# Tokenizing function from class modified to work with our dataset
+string_to_columns <- function(df, j = 500, stem=F){ 
+  library(tidytext)
+  library(SnowballC)
+  data(stop_words)
+    #replace gbm_data with df
+    words <- df %>% #replace with df after testing
+    unnest_tokens(word, comments) %>%
+    anti_join(stop_words) %>% 
+    filter(!(word %in% c("")) & !grepl("^[0-9]+$", word)) #removing all numeric string values which provide little value
+  
+  if(stem){
+    words <- words %>%
+      mutate(word = wordStem(word))
+  }
+  
+  words <- words %>% 
+    count(incident_id, word) %>%
+    #count(incident_id,incident_subtype_code_list,month, day, hour, type,tractce, word) %>% # could I use this count to get a 'strenth of occurence' value?
+    group_by(incident_id) %>% 
+    mutate(exists = (n>0)) %>% 
+    ungroup %>% 
+    group_by(word) %>% 
+    mutate(total = sum(n)) %>% 
+    
+    #replace 1000 with j
+    filter(total > j) %>% # sets a threshold for the number of times a word must occur to be included in the final analysis
+    pivot_wider(id_cols = incident_id, names_from = word, values_from = exists, values_fill = list(exists=0)) %>% 
+
+    #replace gbm_data with df
+    right_join(df, by = "incident_id") %>% 
+    mutate(target = incident_subtype_code_list) %>% 
+    #dplyr::select(-incident_subtype_code_list,-incident_id, -comments) %>% 
+    dplyr::select(-incident_subtype_code_list) %>%
+    mutate(across(where(is.logical), as.integer))
+    
+    #dplyr::select(-incident_id, -comments) #%>% choosing to leaving in the incident ID and the comments section
+
+    #mutate(across(-, ~replace_na(.x, F)))
+}
+```
+
+#running my modified function on my full dataset
+```{r}
+gbm_cleaned <- string_to_columns(gbm_data, j = 1000, stem = T)
+head(gbm_cleaned)
+```
+```{r}
+targets_of_interest <- c("VANDAL", "TRESPASS", "ASLTCUST", "FIGHT", "ASLTEMPL", "OTHER")
+
+gbm_cleaned_classed <- gbm_cleaned %>% 
+  filter(target %in% targets_of_interest)
+  
+gbm_cleaned_unclassed <- gbm_cleaned %>% 
+  filter(!target %in% targets_of_interest) 
+
+gbm_cleaned_classed$target <- droplevels(gbm_cleaned_classed$target)
+
+gbm_cleaned_classed
+gbm_cleaned_unclassed
+
+
+```
+
+#setting up the recipe for my gbm model 
+```{r}
+# convert to function by changing gbm_cleaned to argument
+
+data_split <- initial_split(gbm_cleaned_classed %>% select(-incident_id,-comments), prop = 3/4)
+trimet_train <- training(data_split)
+trimet_test <- testing(data_split)
+
+# set up the recipe
+trimet_rec <-
+  recipe(target ~ ., data = gbm_cleaned_classed %>% select(-incident_id,-comments)) %>%
+  step_BoxCox(all_numeric()) %>%
+  step_normalize(all_numeric()) %>%
+  step_dummy(all_nominal(), -all_outcomes()) %>% # dummy variables for all factor/character columns exc
+  step_zv(all_predictors())# %>% # remove all zero variance predictors (i.e. low frequency dummies)
+  #themis::step_upsample(CategoryNums)
+
+xgb_spec <-
+  boost_tree() %>%
+  set_engine("xgboost") %>%
+  set_mode("classification")
+
+trimet_wflow <-
+  workflow() %>%
+  add_model(xgb_spec) %>%
+  add_recipe(trimet_rec)
+
+trimet_fit <- ## fit the model
+  trimet_wflow %>%
+  fit(data = trimet_train)
+
+cm <- predict(trimet_fit, trimet_test) %>%
+  bind_cols(trimet_test %>% select(target)) %>%
+  conf_mat(truth = target, .pred_class)
+
+cm %>% autoplot()
+cm %>% summary()
+
+
+# Obtain predictions
+predictions <- trimet_fit %>% 
+  predict(trimet_test) %>%
+  bind_cols(trimet_test)
+
+# Create confusion matrix
+cm <- conf_mat(predictions, truth = target, estimate = .pred_class)
+cm
+# Plot confusion matrix
+cm %>% autoplot()
+
+# Summary of confusion matrix
+cm %>% summary()
+
+```
+#PREDICTIONS FOR UNCLASSIFIED DATA
+```{r}
+predictions_final <- trimet_fit %>% 
+  predict(gbm_cleaned_unclassed) %>%
+  bind_cols(gbm_cleaned_unclassed)
+
+predictions_final %>% 
+  group_by(.pred_class) %>% 
+  summarise(.pred_class, count = n()) %>% 
+  arrange(desc(count)) %>% 
+  distinct()
+```
+# I will randomly sample 10 records from each class to judge accuracy
+```{r}
+sampled_df <- predictions_final %>%
+  group_by(.pred_class) %>% # Replace 'class' with your column's actual name
+  nest() %>%
+  mutate(data = map(data, sample_n, size = 10)) %>% 
+  unnest(data) %>% 
+  select(.pred_class, incident_id,comments)
+
+view(sampled_df)
+
+asltempl_10samples = sampled_df %>% filter(.pred_class == "ASLTEMPL")
+fight_10samples = sampled_df %>% filter(.pred_class == "FIGHT")
+asltcust_10samples = sampled_df %>% filter(.pred_class == "ASLTCUST")
+trespass_10samples = sampled_df %>% filter(.pred_class == "TRESPASS")
+vandal_10samples = sampled_df %>% filter(.pred_class == "VANDAL")
+other_10samples = sampled_df %>% filter(.pred_class == "OTHER")
+
+view(fight_10samples)
+```
+
+################################################################################
+# ADVANCED 3D and GIF VISUALIZATIONS, REVISIT AFTER CLASSIFICATION IS COMPLETE #
+################################################################################
+```{r}
+#### COREY CODE 
+library(viridis)
+library(viridisLite)
+#install.packages("viridisLite")
+# grouping violent and non-violent crime types
+VIOLENT <- c("ASLTCUST","FIGHT", "ROBBERY", "WEAPON", "ASLTEMPL", "HOMICIDE", "HOSTAGE", "BOMB", "ROBB_WPN", "RAPE", "HIJACK")
+  NONVIOLENT <- c("TRESPASS", "VANDAL", "TOWPARK", "PARKRIDE", "FACILITY", "THEFT", "PACKAGE","TVM","WES","TRES_NR")
+
+# adding binary column for violent crimes (NA for unlabeled rows)
+df3 <- df3 %>% 
+  mutate(violent_crime = ifelse(is.na(incident_subtype_code_list)==FALSE & incident_subtype_code_list %in% VIOLENT, 1,ifelse(is.na(incident_subtype_code_list)==FALSE & incident_subtype_code_list %in% NONVIOLENT,0,NA)))
+
+
+  roundval = 2
+  df3$latround<-round(df3$lat, digits = roundval)
+  df3$lonround<-round(df3$lon, digits = roundval)
+  
+q<-  ggplot() +
+  geom_sf(data = tri_county_tracts, fill ="black", color = "white", size = .05) +
+geom_point(data = df3 %>% 
+             filter(violent_crime == 1) %>% 
+             select(latround, lonround) %>% 
+             group_by(latround, lonround) %>% 
+             summarise(latround, lonround, incident_count = n()) %>% 
+             distinct() %>% 
+             arrange(desc(incident_count))
+           , aes(x = lonround, y = latround, color = incident_count), alpha = 1, size =.7) + 
+  coord_sf(xlim = c(-123.1, -122.4), ylim = c(45.37, 45.67), expand = TRUE) +
+  theme(legend.position = "none",
+        axis.text = element_blank(),
+        axis.title = element_blank(),
+        axis.ticks = element_blank(),
+        panel.background = element_rect(fill = "black"),
+        plot.background = element_rect(fill = "black"),
+        panel.grid.major = element_blank()
+        )+scale_color_viridis()
+
+
+z<-  ggplot() +
+  geom_sf(data = tri_county_tracts, fill ="black", color = "white", size = .05) +
+geom_point(data = df3 %>% 
+             filter(violent_crime == 0) %>% 
+             select(latround, lonround) %>% 
+             group_by(latround, lonround) %>% 
+             summarise(latround, lonround, incident_count = n()) %>% 
+             distinct() %>% 
+             arrange(desc(incident_count))
+           , aes(x = lonround, y = latround, color = incident_count), alpha = 1, size =.7) + 
+  coord_sf(xlim = c(-123.1, -122.4), ylim = c(45.37, 45.67), expand = TRUE) +
+  theme(legend.position = "none",
+        axis.text = element_blank(),
+        axis.title = element_blank(),
+        axis.ticks = element_blank(),
+        panel.background = element_rect(fill = "black"),
+        plot.background = element_rect(fill = "black"),
+        panel.grid.major = element_blank()
+        )+scale_color_gradientn(colors = inferno(10))
+
+```
+
+#VIOLENT EVENT 3d map
+
+```{r}
+# next steps, can I classify violent vs. non violent incidents using the comments seciont for the remaining 39000 points. logrithmic regression.
+#install.packages("rayshader")
+#install.packages("av")
+
+
+par(mfrow = c(1, 2))
+plot_gg(q, width = 5, raytrace = FALSE, preview = TRUE)
+
+plot_gg(q, width = 5, multicore = TRUE, windowsize = c(600, 400), 
+        zoom = .6, phi = 35, theta = 30, sunangle = 225, soliddepth = 0, ground = FALSE)
+
+render_movie("C:\\Users\\corey\\OneDrive\\Desktop\\01_Willamette U\\Semester 1\\Capstone\\movie3d.mp4", type = "orbit", frames = 2000, width = 1920, height = 1080)
+
+# Sys.sleep(0.2)
+# render_snapshot(clear = TRUE)
+
+# render_depth(filename = "C:\\Users\\corey\\OneDrive\\Desktop\\01_Willamette U\\Semester 1\\Capstone\\myplot.png", focus = 0.7, fstop = 2, samples = 500)
+```
+
+
+# NON-VIOLENT event 3d map
+```{r}
+par(mfrow = c(1, 2))
+plot_gg(z, width = 3.5, raytrace = FALSE, preview = TRUE)
+
+plot_gg(z, width = 3.5, multicore = TRUE, windowsize = c(600, 400), 
+        zoom = .6, phi = 35, theta = 30, sunangle = 225, soliddepth = 0, ground = FALSE)
+
+# Sys.sleep(0.2)
+# render_snapshot(clear = TRUE)
+```
+
+
+# GIF OVER 24 HRS
+```{r}
+# plotting all labeled points
+df5<-df3 %>% 
+            na.omit() %>% 
+             filter(violent_crime == 1)
+
+
+df5$time_hms <- hms::as_hms(df5$time)
+
+p <- ggplot() +
+  geom_sf(data = tri_county_tracts, fill ="black", color = "white", size = .05) +
+  geom_point(data = df5, aes(x = lon, y = lat), color = 'red', alpha = 1, size = 2) + 
+  coord_sf(xlim = c(-123.1, -122.4), ylim = c(45.37, 45.67), expand = TRUE) +
+  labs(title = 'Time: {closest_state}') +
+  theme(legend.position = "none",
+        axis.text = element_blank(),
+        axis.title = element_blank(),
+        axis.ticks = element_blank(),
+        panel.background = element_rect(fill = "black"),
+        plot.background = element_rect(fill = "black"),
+        panel.grid.major = element_blank(),
+        plot.title = element_text(color = "red")
+        ) +
+  transition_states(states = df5$time_hms,
+                    transition_length = 2,
+                    state_length = 1) +
+  
+    shadow_mark(past = TRUE, future = FALSE, alpha = 0.15, color = "blue") +
+  ease_aes('linear')
+
+animation <- animate(p, duration = 15, width = 1000, height = 800, res = 100)
+anim_save("C:\\Users\\corey\\OneDrive\\Desktop\\01_Willamette U\\Semester 1\\Capstone\\animation.gif", animation)
+#summary(df3)
+```
+# MACHINE LEARNING FINAL ATTEMPT
+using the larger dataset taking another pass at classifying unlabeled rows.
+will narrow efforts by only looking for top 4 categories. 
+```{r}
+
+```
+
